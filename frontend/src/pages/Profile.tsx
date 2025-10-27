@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios, { AxiosError } from 'axios'; // Import Axios
+import axios, { AxiosError } from 'axios';
 import { 
     User, Mail, Phone, MapPin, Calendar, Briefcase, GraduationCap, Github, Linkedin, Twitter, Globe, Save, Edit3, X,
     Building2, BookOpen, Award, FileText, Sparkles
@@ -11,45 +11,23 @@ import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
 import toast from 'react-hot-toast';
 
-// --- Configuration ---
-// Assuming the API base URL is defined consistently
-const API_BASE_URL = 'http://localhost:8000/api';
-
-// --- Expanded Profile Data Interface ---
-// This interface includes fields from your current component state PLUS the core fields from UserData
 interface ProfileData {
-    // Core UserData fields from context
     uid: string;
     displayName: string;
     email: string;
     institute: string;
     course: string;
     bio: string;
-    membershipStatus: 'pending' | 'approved' | 'rejected' | string; // Ensure string type is covered
+    membershipStatus: 'pending' | 'approved' | 'rejected' | string;
     role: 'STUDENT' | 'TEACHER' | 'ADMIN' | string;
 
-    // Extended fields that may need to be added to Django model/serializer
-    phone: string;
-    dateOfBirth: string;
-    gender: string;
-    yearOfStudy: string;
-    enrollmentNumber: string;
-    department: string;
-    specialization: string;
-    address: string;
-    city: string;
-    state: string;
-    pincode: string;
-    interests: string;
-    skills: string;
-    achievements: string;
-    githubUrl: string;
-    linkedinUrl: string;
-    twitterUrl: string;
-    websiteUrl: string;
+    phone: string; dateOfBirth: string; gender: string; yearOfStudy: string; 
+    enrollmentNumber: string; department: string; specialization: string; 
+    address: string; city: string; state: string; pincode: string; 
+    interests: string; skills: string; achievements: string; 
+    githubUrl: string; linkedinUrl: string; twitterUrl: string; websiteUrl: string;
 }
 
-// Initial state function to ensure fields are always present
 const getInitialProfileData = (userData: any): ProfileData => ({
     uid: userData?.uid || '',
     displayName: userData?.displayName || '',
@@ -60,63 +38,36 @@ const getInitialProfileData = (userData: any): ProfileData => ({
     membershipStatus: userData?.membershipStatus || 'pending',
     role: userData?.role || 'guest',
 
-    // Extended fields (assuming defaults for now, as they aren't in the core Django User model)
-    phone: '',
-    dateOfBirth: '',
-    gender: '',
-    yearOfStudy: '',
-    enrollmentNumber: '',
-    department: '',
-    specialization: '',
-    address: '',
-    city: '',
-    state: '',
-    pincode: '',
-    interests: '',
-    skills: '',
-    achievements: '',
-    githubUrl: '',
-    linkedinUrl: '',
-    twitterUrl: '',
-    websiteUrl: '',
+    phone: '', dateOfBirth: '', gender: '', yearOfStudy: '', enrollmentNumber: '', 
+    department: '', specialization: '', address: '', city: '', state: '', pincode: '', 
+    interests: '', skills: '', achievements: '', githubUrl: '', linkedinUrl: '', 
+    twitterUrl: '', websiteUrl: '',
 });
 
 
 const Profile: React.FC = () => {
-    // We now use userData as the source of truth, not a separate fetch
     const { user, userData, refreshUserData, getAuthToken } = useAuth();
     const navigate = useNavigate();
     const [isEditing, setIsEditing] = useState(false);
     const [saving, setSaving] = useState(false);
-    
-    // Set initial loading to false since we rely on AuthContext's initial loading state.
-    // We only set it to true if we need to do extra fetching (which we no longer do).
-    const [loading, setLoading] = useState(false); 
+    const [loading] = useState(false); // Rely on context for initial loading
     
     const [profileData, setProfileData] = useState<ProfileData>(getInitialProfileData(null));
     const [originalData, setOriginalData] = useState<ProfileData>(getInitialProfileData(null));
 
-    // --- EFFECT: Sync Context Data to Local State ---
     useEffect(() => {
         if (!user) {
-            // User context is not available, redirect immediately
-            navigate('/login'); // Changed from '/signin' to '/login' for consistency
+            navigate('/login');
             return;
         }
 
         if (userData) {
-            // Use userData from context to initialize the form
             const data = getInitialProfileData(userData);
             setProfileData(data);
-            setOriginalData(data); // Store original data for cancel operation
-        } else {
-             // Optional: If user is true but userData is null (still loading in context), 
-             // you might show a loading spinner, but AuthContext handles most of this.
+            setOriginalData(data);
         }
     }, [user, userData, navigate]);
 
-
-    // --- HANDLERS ---
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -124,29 +75,33 @@ const Profile: React.FC = () => {
     };
 
     const handleSave = async () => {
-        if (!user) return;
+        if (!user || !getAuthToken()) return;
         
         setSaving(true);
         try {
-            // 1. Prepare data payload. Only send fields that are part of the Django User model (for the PUT request).
-            const payload: Partial<ProfileData> = {
+            const coreUserPayload = {
                 displayName: profileData.displayName,
                 institute: profileData.institute,
                 course: profileData.course,
                 bio: profileData.bio,
-                // Add any other fields that are *actually* in your Django User model here
-                // e.g., phone: profileData.phone,
-                // The extended fields (skills, achievements) would require a linked Profile model in Django.
             };
 
-            // Use the UserViewSet detail endpoint: PUT to /users/{uid}/
-            await axios.put(`${API_BASE_URL}/users/${user.uid}/`, payload, {
-                headers: {
-                    Authorization: `Bearer ${getAuthToken()}`,
-                },
-            });
-
-            // 2. Refresh Context and Update UI
+            // 2. Extended Profile Payload (Fields NOT in your primary Django User model)
+            // NOTE: For a complete solution, Django requires a separate Profile Model and corresponding API endpoint (e.g., /profile-details/{uid}/).
+            const extendedProfilePayload = {
+                phone: profileData.phone, dateOfBirth: profileData.dateOfBirth, gender: profileData.gender, 
+                yearOfStudy: profileData.yearOfStudy, enrollmentNumber: profileData.enrollmentNumber, 
+                department: profileData.department, specialization: profileData.specialization, 
+                address: profileData.address, city: profileData.city, state: profileData.state, 
+                pincode: profileData.pincode, interests: profileData.interests, skills: profileData.skills, 
+                achievements: profileData.achievements, githubUrl: profileData.githubUrl, 
+                linkedinUrl: profileData.linkedinUrl, twitterUrl: profileData.twitterUrl, 
+                websiteUrl: profileData.websiteUrl,
+            };
+            
+            const token = getAuthToken();
+            const headers = { Authorization: `Bearer ${token}` };
+            await axios.put(`/users/${user.uid}/`, coreUserPayload, { headers });
             await refreshUserData();
             
             toast.success('Profile updated successfully! 🎉');
@@ -159,7 +114,6 @@ const Profile: React.FC = () => {
             
             let errorMessage = 'Failed to update profile.';
             if (axiosError.response?.status === 400 && errorData) {
-                // Display specific validation error messages from DRF
                 errorMessage = JSON.stringify(errorData, null, 2).replace(/[{}"\\]/g, '').replace(/,/g, '\n');
             }
             
@@ -171,33 +125,11 @@ const Profile: React.FC = () => {
 
     const handleCancel = () => {
         setIsEditing(false);
-        // Reset local state to the original data synced from context
         setProfileData(originalData); 
     };
-
-    // --- RENDERING ---
-
-    // The loading state relies on AuthContext's state, but we'll keep the local check
-    // for a clearer transition if user/userData aren't yet available.
-    if (loading || !userData) { 
-        return (
-            <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center">
-                <div className="text-center">
-                    <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                    <p className="text-slate-400">Loading profile...</p>
-                </div>
-            </div>
-        );
-    }
-
-    // Helper component for input fields
     const ProfileInput: React.FC<{ 
-        label: string, 
-        name: keyof ProfileData, 
-        icon: React.FC<{ className: string }>, 
-        type?: string,
-        placeholder?: string,
-        isTextArea?: boolean
+        label: string, name: keyof ProfileData, icon: React.FC<{ className: string }>, 
+        type?: string, placeholder?: string, isTextArea?: boolean
     }> = ({ label, name, icon: Icon, type = 'text', placeholder, isTextArea = false }) => (
         <div>
             <label htmlFor={name} className="block text-sm font-medium text-slate-300 mb-2">
@@ -207,22 +139,14 @@ const Profile: React.FC = () => {
                 {!isTextArea && <Icon className="absolute left-3 top-3.5 w-5 h-5 text-slate-500" />}
                 {isTextArea ? (
                     <textarea
-                        id={name}
-                        name={name}
-                        value={profileData[name] || ''}
-                        onChange={handleInputChange}
-                        disabled={!isEditing}
-                        rows={name === 'bio' ? 4 : 3}
+                        id={name} name={name} value={profileData[name] || ''} onChange={handleInputChange}
+                        disabled={!isEditing} rows={name === 'bio' ? 4 : 3}
                         className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all resize-none"
                         placeholder={placeholder}
                     />
                 ) : (
                     <input
-                        id={name}
-                        type={type}
-                        name={name}
-                        value={profileData[name] || ''}
-                        onChange={handleInputChange}
+                        id={name} type={type} name={name} value={profileData[name] || ''} onChange={handleInputChange}
                         disabled={!isEditing}
                         //@ts-ignore
                         className={`w-full ${Icon ? 'pl-10' : 'pl-4'} pr-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all`}
@@ -233,17 +157,13 @@ const Profile: React.FC = () => {
         </div>
     );
     
-    // Helper function for Select fields (since they are unique)
     const ProfileSelect: React.FC<{ label: string, name: keyof ProfileData, options: { value: string, label: string }[] }> = ({ label, name, options }) => (
         <div>
             <label htmlFor={name} className="block text-sm font-medium text-slate-300 mb-2">
                 {label}
             </label>
             <select
-                id={name}
-                name={name}
-                value={profileData[name] || ''}
-                onChange={handleInputChange}
+                id={name} name={name} value={profileData[name] || ''} onChange={handleInputChange}
                 disabled={!isEditing}
                 className="w-full px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-all"
             >
@@ -259,7 +179,6 @@ const Profile: React.FC = () => {
             <Navbar />
             <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pt-24 pb-16">
                 <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8">
-                    {/* Header Section */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -273,7 +192,6 @@ const Profile: React.FC = () => {
                                 <p className="text-slate-400">Manage your personal information and preferences</p>
                             </div>
                             
-                            {/* Action Buttons */}
                             {!isEditing ? (
                                 <button
                                     onClick={() => setIsEditing(true)}
@@ -304,7 +222,6 @@ const Profile: React.FC = () => {
                             )}
                         </div>
 
-                        {/* Membership Status Badge */}
                         <div className="flex items-center gap-3">
                             <span className={`px-3 py-1 rounded-full text-xs font-medium ${
                                 profileData.membershipStatus === 'approved' 
@@ -322,7 +239,6 @@ const Profile: React.FC = () => {
                                  profileData.role === 'TEACHER' ? '👨‍🏫 Teacher' : 
                                  profileData.role === 'STUDENT' ? '🎓 Student' : '👤 Guest'}
                             </span>
-                             {/* Display Paras Stones and Coins */}
                             <span className="px-3 py-1 rounded-full text-xs font-medium bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
                                 <Sparkles className="w-3 h-3"/> Paras Stones: {userData?.parasStones || 0}
                             </span>
@@ -332,7 +248,6 @@ const Profile: React.FC = () => {
                         </div>
                     </motion.div>
 
-                    {/* Profile Form */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -340,28 +255,18 @@ const Profile: React.FC = () => {
                         className="bg-slate-900/50 backdrop-blur-sm border border-blue-500/20 rounded-2xl p-8 shadow-2xl"
                     >
                         <div className="space-y-8">
-                            {/* Personal Information */}
                             <div>
                                 <div className="flex items-center gap-2 mb-6">
                                     <User className="w-5 h-5 text-blue-400" />
                                     <h2 className="text-xl font-semibold text-white">Personal Information</h2>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Full Name */}
                                     <ProfileInput label="Full Name" name="displayName" icon={User} placeholder="Enter your full name" />
-                                    
-                                    {/* Email (Disabled) */}
                                     <div className="pointer-events-none">
                                         <ProfileInput label="Email Address" name="email" icon={Mail} type="email" />
                                     </div>
-                                    
-                                    {/* Phone Number */}
                                     <ProfileInput label="Phone Number" name="phone" icon={Phone} type="tel" placeholder="+91 XXXXX XXXXX" />
-                                    
-                                    {/* Date of Birth */}
                                     <ProfileInput label="Date of Birth" name="dateOfBirth" icon={Calendar} type="date" />
-                                    
-                                    {/* Gender */}
                                     <ProfileSelect 
                                         label="Gender" 
                                         name="gender" 
@@ -382,13 +287,8 @@ const Profile: React.FC = () => {
                                     <h2 className="text-xl font-semibold text-white">Academic Information</h2>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    {/* Institute */}
                                     <ProfileInput label="Institute/University" name="institute" icon={Building2} placeholder="e.g., IISER Berhampur" />
-                                    
-                                    {/* Course */}
                                     <ProfileInput label="Course/Program" name="course" icon={BookOpen} placeholder="e.g., BS-MS Dual Degree" />
-                                    
-                                    {/* Year of Study */}
                                     <ProfileSelect 
                                         label="Year of Study" 
                                         name="yearOfStudy" 
@@ -400,19 +300,12 @@ const Profile: React.FC = () => {
                                             { value: '5', label: '5th Year' },
                                         ]}
                                     />
-
-                                    {/* Enrollment Number */}
                                     <ProfileInput label="Enrollment Number" name="enrollmentNumber" icon={FileText} placeholder="Your enrollment number" />
-
-                                    {/* Department */}
                                     <ProfileInput label="Department" name="department" icon={Briefcase} placeholder="e.g., Physics, Chemistry" />
-
-                                    {/* Specialization */}
                                     <ProfileInput label="Specialization" name="specialization" icon={Award} placeholder="Your area of interest" />
                                 </div>
                             </div>
 
-                            {/* Address Information */}
                             <div className="pt-6 border-t border-slate-800">
                                 <div className="flex items-center gap-2 mb-6">
                                     <MapPin className="w-5 h-5 text-emerald-400" />
@@ -436,12 +329,10 @@ const Profile: React.FC = () => {
                                 </div>
                                 <div className="space-y-6">
                                     <ProfileInput label="Bio" name="bio" icon={FileText} isTextArea placeholder="Tell us about yourself..." />
-
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <ProfileInput label="Interests" name="interests" icon={Sparkles} placeholder="e.g., Physics, AI, Web Dev" />
                                         <ProfileInput label="Skills" name="skills" icon={Award} placeholder="e.g., Python, React, MATLAB" />
                                     </div>
-
                                     <ProfileInput label="Achievements" name="achievements" icon={Award} isTextArea placeholder="List your achievements and awards..." />
                                 </div>
                             </div>

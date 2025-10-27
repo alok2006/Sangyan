@@ -10,8 +10,6 @@ import { useAuth } from '../context/AuthContext';
 import React from 'react';
 import { HiEyeOff } from 'react-icons/hi';
 
-// Assuming the API base URL is defined consistently
-// const API_BASE_URL = 'http://localhost:8000/api/'; // Use /api/v1/
 
 const Signup = () => {
     // --- State Hooks ---
@@ -72,12 +70,10 @@ const Signup = () => {
         try {
             const nameParts = formData.name.trim().split(/\s+/);
             const firstName = nameParts[0];
-            // Use the rest of the name as last name, or '.' if only one word (required by Django)
             const lastName = nameParts.slice(1).join(' ') || '.'; 
             
             // --- STEP 1: Register User via Django REST Endpoint ---
             const payload = {
-                // Django REQUIRED_FIELDS: 'username', 'first_name', 'last_name'
                 email: formData.email,
                 username: formData.username,
                 first_name: firstName,
@@ -98,10 +94,12 @@ const Signup = () => {
             const loginResponse = await axios.post(`/api/token/`, {
                 email: formData.email, 
                 password: formData.password,
+            }).catch((error) => {
+                throw error; 
             });
-
+            
             const { access } = loginResponse.data; 
-
+            console.log(access);
             if (access) {
                 // --- STEP 3: Store Token and Update Context ---
                 localStorage.setItem('authToken', access);

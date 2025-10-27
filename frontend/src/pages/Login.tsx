@@ -1,16 +1,12 @@
 import { useState, FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import axios, { AxiosError } from 'axios';
 import { FcGoogle } from 'react-icons/fc';
 import { HiMail, HiLockClosed, HiEye, HiEyeOff, HiSparkles, HiArrowLeft } from 'react-icons/hi';
 import { Lightbulb } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import React from 'react';
 
-// NOTE: We rely on the AuthContext's axios instance for most authenticated calls.
-// Since login is unauthenticated, we'll use a local axios call or assume a direct path.
-const API_BASE_URL = 'http://localhost:8000/api/v1'; // Base API URL for reference
 
 const Login = () => {
     // --- State Hooks ---
@@ -21,8 +17,7 @@ const Login = () => {
     
     // --- Context & Router Hooks ---
     const navigate = useNavigate();
-    // Get refreshUserData from context to update app state upon successful login
-    const { refreshUserData } = useAuth(); 
+    const { login } = useAuth(); 
 
     const handleEmailLogin = async (e: FormEvent) => {
         e.preventDefault();
@@ -34,43 +29,22 @@ const Login = () => {
 
         setLoading(true);
         try {
-            // --- STEP 1: Authenticate and get JWT Token ---
-            // Use standard axios call to the token endpoint
-            const response = await axios.post(`${API_BASE_URL}/token/`, {
-                email: email, // Your User model uses 'email' as the USERNAME_FIELD
-                password: password,
-            });
+            // Use the centralized login function from AuthContext
+            const success = await login(email, password); 
 
-            const { access } = response.data; // Assuming simplejwt returns 'access'
-
-            if (access) {
-                // --- STEP 2: Store Token and Update Context ---
-                localStorage.setItem('authToken', access); 
-                
-                // Fetch detailed user data and update the global state via context
-                await refreshUserData(); 
-
+            if (success) {
                 toast.success('Welcome back! 🎉');
                 navigate('/');
             } else {
-                // This shouldn't happen with standard simplejwt, but catches generic success/no-token issues
-                throw new Error("Login failed to retrieve authentication token.");
+                // The login function in AuthContext returns false on failure.
+                // Since AuthContext doesn't toast, we provide a generic error here.
+                // (The AuthContext console logs the specific API error.)
+                toast.error('Login failed. Please check your credentials.');
             }
         } catch (error) {
-            console.error('Login error:', error);
-            const axiosError = error as AxiosError;
-            const errorData = axiosError.response?.data as any;
-            
-            // Handle specific DRF/JWT errors
-            if (axiosError.response?.status === 401) {
-                // Default message for Invalid Credentials
-                toast.error(errorData?.detail || 'Invalid email or password.');
-            } else if (axiosError.response?.status === 400) {
-                 // May catch validation errors (e.g., missing fields)
-                toast.error(errorData?.detail || 'Login failed due to missing information.');
-            } else {
-                toast.error('Failed to connect to the server. Please try again.');
-            }
+            // This catch block handles unexpected errors (e.g., code crash, not API errors)
+            console.error('Unexpected Login Error:', error);
+            toast.error('An unexpected error occurred. Please try again.');
         } finally {
             setLoading(false);
         }
@@ -78,24 +52,20 @@ const Login = () => {
 
     const handleGoogleLogin = async () => {
         setLoading(true);
-        
-        // --- Placeholder for Django Social Auth Flow ---
         toast('Google login now requires Django social authentication setup. Redirecting...');
         
         try {
-            // This would trigger an OAuth flow, ideally handled by the Django backend
-            // For example: window.location.href = `${API_BASE_URL}/auth/o/google-oauth2/`;
+            // --- Placeholder for Django Social Auth Flow ---
+            // The actual implementation would redirect the user and complete the login via the backend.
             
             setTimeout(() => {
-                // In a real app, successful redirect with token would trigger refreshUserData
-                // toast.success('Google login flow started! Check your Django setup.');
+                // toast.success('Google login flow initiated.');
             }, 1000);
             
         } catch (error) {
             console.error('Google login error:', error);
             toast.error('Failed to initiate login with Google.');
         } finally {
-            // Loading is often kept until the final context update after redirect
             setLoading(false); 
         }
     };

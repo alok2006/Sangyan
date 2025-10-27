@@ -3,17 +3,18 @@ import toast from 'react-hot-toast';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // --- Configuration ---
-// Base URL for the Django REST API endpoints
-const API_BASE_URL = 'http://localhost:8000/api/'; 
+// The base URL for the Django server (e.g., http://localhost:8000)
+const API_SERVER_ROOT = 'http://localhost:8000'; 
+// The base URL for the API router (where /users/me/ lives)
+const API_ROUTER_BASE = `${API_SERVER_ROOT}/api/`; 
 
-// --- Interface Definitions ---
-
+// --- Interface Definitions (Unchanged) ---
 export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN'; 
 export type MembershipStatusType = 'pending' | 'approved' | 'rejected';
 
 export interface ParasTransaction {
     amount: number;
-    transaction_type: string; // e.g., 'earning', 'spending'
+    transaction_type: string;
     reason: string;
     timestamp: string;
 }
@@ -43,6 +44,7 @@ interface AuthContextType {
     user: AuthUser | null;
     userData: UserData | null;
     loading: boolean;
+    login: (email: string, password: string) => Promise<boolean>;
     signOut: (callApi?: boolean) => Promise<void>;
     updateProfile: (displayName: string, photoURL?: string, institute?: string, course?: string, bio?: string) => Promise<void>;
     refreshUserData: () => Promise<void>;
@@ -66,9 +68,9 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
-// Create a configured Axios instance
+// Create a configured Axios instance with the API ROUTER base
 const axiosInstance: AxiosInstance = axios.create({
-    baseURL: API_BASE_URL,
+    baseURL: API_ROUTER_BASE, // Set the base URL for router endpoints
     headers: {
         'Content-Type': 'application/json',
     },
@@ -81,24 +83,18 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     const [loading, setLoading] = useState(true);
 
     const getAuthToken = useCallback((): string | null => {
-        return localStorage.getItem('authToken'); // Uses 'authToken' for consistency
+        return localStorage.getItem('authToken');
     }, []);
     
-    // SignOut function needs to be declared outside of actions to be used by interceptor
     const signOut = useCallback(async (callApi = true) => {
         try {
             if (callApi) {
-                // Optional: Call JWT blacklist endpoint
-                // await axiosInstance.post('/auth/logout/'); 
+                // ... (SignOut Logic)
             }
-            
             localStorage.removeItem('authToken');
-            // Ensure no pending requests try to use a stale token
             delete axiosInstance.defaults.headers.common['Authorization']; 
-            
             setUser(null);
             setUserData(null);
-            
             toast.success('Signed out successfully');
         } catch (error) {
             console.error('Error signing out:', error);
@@ -107,33 +103,24 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, []);
 
 
-    // Fetch user data from the API
     const fetchUserData = useCallback(async () => {
-        const URL = '/users/me/'; 
+        // Corrected URL: '/users/me/' is relative to API_ROUTER_BASE
+        const URL = 'users/me/'; 
 
         try {
             const response = await axiosInstance.get(URL);
             const data = response.data;
             
+            // ... (Mapping Logic - Unchanged) ...
             const mappedData: UserData = {
-                uid: data.uid, 
-                email: data.email,
-                displayName: data.displayName,
-                photoURL: data.photoURL || null,
-                role: data.role as UserRole,
-                membershipStatus: data.membershipStatus,
-                createdAt: data.createdAt,
-                institute: data.institute,
-                course: data.course,
-                bio: data.bio,
-                parasStones: data.parasStones,
-                coins: data.coins,
-                
+                uid: data.uid, email: data.email, displayName: data.displayName,
+                photoURL: data.photoURL || null, role: data.role as UserRole,
+                membershipStatus: data.membershipStatus, createdAt: data.createdAt,
+                institute: data.institute, course: data.course, bio: data.bio,
+                parasStones: data.parasStones, coins: data.coins,
                 parasHistory: data.parasHistory?.map((tx: any) => ({
-                    amount: tx.amount,
-                    transaction_type: tx.transaction_type, 
-                    reason: tx.reason,
-                    timestamp: tx.timestamp,
+                    amount: tx.amount, transaction_type: tx.transaction_type, 
+                    reason: tx.reason, timestamp: tx.timestamp,
                 })) || [],
             };
             
@@ -141,17 +128,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             return mappedData;
         } catch (error) {
             const axiosErr = error as AxiosError;
-            // The interceptor handles 401; catch other retrieval errors (404, 500 etc.)
             if (axiosErr.response?.status !== 401) { 
                 console.error('Error fetching user data:', axiosErr.message);
-                // No toast here as it floods on initial load if API is down
             }
         }
         return null;
     }, [signOut]);
 
     const refreshUserData = useCallback(async () => {
-        // Only run if we know a user is logged in (user state is populated or token exists)
         if (getAuthToken()) {
             const data = await fetchUserData();
             if (data) {
@@ -159,6 +143,35 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             }
         }
     }, [fetchUserData, getAuthToken]);
+    
+    // --- LOGIN IMPLEMENTATION (CORRECTED) ---
+    const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+        try {
+            // FIX A: Use the ABSOLUTE URL for the JWT token endpoint since it is NOT under API_ROUTER_BASE
+            const TOKEN_URL = `${API_SERVER_ROOT}/api/token/`;
+            
+            const response = await axios.post(TOKEN_URL, {
+                email: email, 
+                password: password,
+            });
+
+            // FIX B: Retrieve the 'access' token specifically
+            const { access } = response.data; 
+            
+            if (access) {
+                localStorage.setItem('authToken', access);
+                // Fetch detailed user data to populate context
+                await refreshUserData(); 
+                return true;
+            }
+            return false;
+        } catch (error) {
+            console.error('Login Error:', error);
+            // Throwing the error keeps the context clean; the consuming component should handle the toast.
+            throw error;
+        }
+    }, [refreshUserData]);
+    // --- END LOGIN IMPLEMENTATION ---
     
     // --- Interceptors Setup ---
     useEffect(() => {
@@ -168,7 +181,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 const token = getAuthToken();
                 if (token) {
                     config.headers.Authorization = `Bearer ${token}`;
-                    // Set default header for subsequent requests
                     axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                 }
                 return config;
@@ -181,10 +193,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             (response) => response,
             (error: AxiosError) => {
                 if (error.response?.status === 401) {
-                    // Check if it's not a direct token request (like /token/) to avoid false positives
-                    if (!error.config?.url?.includes('token/')) {
+                    // Check if it's not a direct token request
+                    if (!error.config?.url?.includes('/api/token/')) { // Check full path including /api/token/
                         toast.error('Session expired. Please log in again.');
-                        // Use a local signout to prevent an infinite interceptor loop
                         setTimeout(() => signOut(false), 0); 
                     }
                 }
@@ -192,7 +203,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             }
         );
 
-        // Clean up interceptors
         return () => {
             axiosInstance.interceptors.request.eject(requestInterceptor);
             axiosInstance.interceptors.response.eject(responseInterceptor);
@@ -213,7 +223,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [fetchUserData, getAuthToken]);
 
 
-    // --- API Action Functions (Memoized) ---
+    // --- Other API Action Functions (Unchanged logic) ---
     
     const addParasStones = useCallback(async (amount: number, reason: string) => {
         if (!user) throw new Error('No user logged in');
@@ -272,7 +282,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         try {
             await axiosInstance.put(`/users/${user.uid}/`, updateData);
             
-            // Fast local update
             setUser(prev => prev ? { ...prev, displayName } : null); 
             
             await refreshUserData();
@@ -296,6 +305,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         user,
         userData,
         loading,
+        login, 
         signOut,
         updateProfile,
         refreshUserData,
