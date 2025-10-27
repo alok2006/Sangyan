@@ -1,0 +1,49 @@
+*.log
+*.swp
+*~
+.DS_Store
+.env
+.vscode/
+
+venv/
+.venv/
+env/
+.python-version
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+db.sqlite3
+/media/ # User-uploaded files
+
+/static_collected/
+/staticfiles/
+local_settings.py # For sensitive configuration
+.coverage
+htmlcov/
+.tox/
+Lib/
+# ----------------------------------------------------------------------
+# FRONTEND (Node / React / TypeScript Specific)
+# Directory: /frontend/
+# ----------------------------------------------------------------------
+/frontend/node_modules
+/frontend/dist
+/frontend/build
+/frontend/out
+
+# NPM package locks and reports
+package-lock.json
+npm-debug.log*
+yarn-error.log
+
+# TypeScript compilation outputs (if not compiling directly to source)
+*.js.map # Source maps
+# If your TypeScript output is directed to a single folder:
+/frontend/ts-build/
+
+# Tailwind/PostCSS caches
+.sass-cache/
+.pnp/
+.pnp.js
