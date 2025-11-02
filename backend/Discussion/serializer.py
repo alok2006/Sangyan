@@ -1,21 +1,15 @@
-# serializers.py
-
 from rest_framework import serializers
 from .models import (
-    User, ParasTransaction, Blog, BlogCategory, 
-    Event, EventType, EventMode, Resource, ResourceCategory
+    User, UserRole, MembershipStatus, ParasTransaction, 
+    Blog, BlogCategory, Event, EventType, EventMode, 
+    Resource, ResourceCategory, Thread # ADD THREAD MODEL
 )
 
 # --- USER AND TRANSACTION SERIALIZERS ---
 # ----------------------------------------
 
 class ParasTransactionSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the ParasTransaction model.
-    """
-    # Note: 'user' field is typically not included in the transaction serializer 
-    # when listing a user's transactions (it's implicit), but included for creation.
-    # We omit it here for a cleaner nested representation.
+    """ Serializer for the ParasTransaction model. """
 
     class Meta:
         model = ParasTransaction
@@ -29,38 +23,34 @@ class ParasTransactionSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the custom User model.
-    Maps to the UserData interface.
-    """
-    # Custom fields mirroring the interface:
-    # 1. parasHistory: Use the nested serializer for the related model
-    #    The 'related_name' on the ForeignKey is 'paras_history'
+    """ Serializer for the custom User model (Profile/Registration). """
+    
+    # 1. parasHistory: Nested serializer for transactions
     parasHistory = ParasTransactionSerializer(
-        source='paras_history',  # Use the related_name from the ForeignKey
+        source='paras_history',  
         many=True, 
         read_only=True
     )
     
-    # 2. displayName: Read/Write field
-    # 3. photoURL: Read/Write field
+    # 2. uid (pk) mapping: Use the inherited integer primary key (pk) as 'uid'
+    uid = serializers.IntegerField(source='pk', read_only=True)
     
-    # Optional field: createdAt is represented by date_joined in AbstractUser
+    # 3. createdAt is mapped from date_joined
     createdAt = serializers.DateTimeField(source='date_joined', read_only=True)
     
-    # We must explicitly handle the 'uid' field if it is the primary key.
-    # For user creation, typically only email, username, and password are sent.
+    # 4. If you intend to expose the 'uid_string' field:
+    # uid_string = serializers.CharField(read_only=True)
 
     class Meta:
         model = User
         fields = [
-            'id', 'email', 'username', 'displayName', 'photoURL', 'role', 
+            'uid', 'uid_string', 'email', 'username', 'displayName', 'photoURL', 'role', 
             'membershipStatus', 'createdAt', 'institute', 'course', 'bio', 
             'parasStones', 'coins', 'parasHistory', 'is_staff', 'is_superuser','password'
         ]
         read_only_fields = [
-            'uid', 'role', 'parasStones', 'coins', 'createdAt', 'is_staff', 'is_superuser', 
-            'membershipStatus', 'parasHistory'
+            'uid', 'uid_string', 'role', 'parasStones', 'coins', 'createdAt', 
+            'is_staff', 'is_superuser', 'membershipStatus', 'parasHistory'
         ]
         extra_kwargs = {
             'password': {'write_only': True, 'required': True},
@@ -68,13 +58,18 @@ class UserSerializer(serializers.ModelSerializer):
             'email': {'required': True},
         }
 
-    # Optional: Customize the creation process to handle password hashing
     def create(self, validated_data):
+        # Handles user creation with password hashing
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            # ... include other fields if necessary
+            first_name=validated_data.get('first_name', ''),
+            last_name=validated_data.get('last_name', ''),
+            # Pass custom fields that are required in registration payload
+            institute=validated_data.get('institute'),
+            course=validated_data.get('course'),
+            displayName=validated_data.get('displayName'),
         )
         return user
 
@@ -82,74 +77,50 @@ class UserSerializer(serializers.ModelSerializer):
 # --- CONTENT SERIALIZERS ---
 # ---------------------------
 
-class BlogSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the Blog model.
-    """
-    # The 'author' is a Foreign Key to the User model. 
-    # We display a simplified representation of the author.
-    # NOTE: If you want *full* author details, use a nested UserSerializer (or a subset).
-    class AuthorPublicSerializer(serializers.ModelSerializer):
-        class Meta:
-            model = User
-            fields = ['uid', 'displayName', 'photoURL', 'institute']
+# Dedicated serializer for author information in nested fields
+class AuthorPublicSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ['pk', 'displayName', 'photoURL', 'institute'] # Use pk for ID
 
+
+class BlogSerializer(serializers.ModelSerializer):
+    """ Serializer for the Blog model. """
+    
     author = AuthorPublicSerializer(read_only=True)
+    
     class Meta:
         model = Blog
         fields = [
             'id', 'title', 'slug', 'author', 'category', 'tags', 'excerpt', 
             'content', 'coverImage', 'publishedAt', 'readTime', 'views', 
-            'likes', 'featured'
+            'likes', 'featured', 'is_premuim'
         ]
         read_only_fields = ['id', 'slug', 'publishedAt', 'views', 'likes']
 
 
 class EventSpeakerSerializer(serializers.ModelSerializer):
-    """
-    A simplified serializer for the speaker object within the Event.
-    """
+    """ Simplified serializer for the speaker object within the Event. """
+    
     class Meta:
         model = User
-        fields = [
-            'displayName', 'institute', 'photoURL' # Mapping User fields to speaker object
-        ]
-        # Rename fields for the output to match the Event interface speaker object keys
-        # This requires custom methods or explicit fields, but for simplicity, we use:
-        # NOTE: User model fields 'displayName', 'institute', 'photoURL' will output as is.
-        # To strictly match the interface's speaker structure, use:
-        # fields = ['name', 'designation', 'institute', 'avatar']
-        # source='first_name' for 'name', etc., but since we FK to User, we use User fields.
-        
-        # If the User model does not have 'designation', 'name' (for User, use 'displayName'),
-        # or 'avatar' (for User, use 'photoURL'), this will need adjustment.
-        # Assuming: name=displayName, avatar=photoURL, designation/institute are available.
-        
-        # We will map: name -> displayName, avatar -> photoURL, designation -> bio (as a proxy)
+        # Map User model fields to the desired speaker output structure
         fields = ['displayName', 'bio', 'institute', 'photoURL']
         
-        extra_kwargs = {
-            'displayName': {'source': 'displayName'}, # name
-            'bio': {'source': 'bio'},                 # designation (as a proxy)
-            'photoURL': {'source': 'photoURL'},       # avatar
-        }
-        
     def to_representation(self, instance):
-        """Customizes the output to match the 'speaker' object structure."""
+        """ Customizes the output to match the expected speaker structure. """
         representation = super().to_representation(instance)
         return {
             'name': representation.pop('displayName', None),
-            'designation': representation.pop('bio', None),
+            'designation': representation.pop('bio', None), # Using bio as proxy for designation
             'institute': representation.pop('institute', None),
             'avatar': representation.pop('photoURL', None),
         }
 
 
 class EventSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the Event model.
-    """
-    # Nested serializer for the 'speaker' object
+    """ Serializer for the Event model. """
+    
     speaker = EventSpeakerSerializer(read_only=True)
 
     class Meta:
@@ -163,9 +134,8 @@ class EventSerializer(serializers.ModelSerializer):
 
 
 class ResourceSerializer(serializers.ModelSerializer):
-    """
-    Serializer for the Resource model.
-    """
+    """ Serializer for the Resource model. """
+    
     class Meta:
         model = Resource
         fields = [
@@ -173,3 +143,54 @@ class ResourceSerializer(serializers.ModelSerializer):
             'author', 'thumbnail', 'downloads'
         ]
         read_only_fields = ['id', 'downloads']
+
+
+# --- NEW THREAD/FORUM SERIALIZERS ---
+# ------------------------------------
+
+class ThreadSerializer(serializers.ModelSerializer):
+    """ Serializer for the Thread model (Forum posts and replies). """
+
+    user = AuthorPublicSerializer(read_only=True) # Display author info
+    
+    # Nested field to display replies (can be self-referential)
+    # Note: Use PrimaryKeyRelatedField for replies in a list view to avoid infinite nesting
+    reply_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Thread
+        fields = [
+            'id', 'title', 'content', 'user', 'created_at', 
+            'parent_thread', 'color', 'reply_count'
+        ]
+        read_only_fields = ['id', 'created_at', 'user', 'reply_count']
+        
+    def get_reply_count(self, obj):
+        # Method to efficiently count direct replies
+        return obj.reply.count()
+
+
+class ThreadDetailSerializer(ThreadSerializer):
+    """ Serializer used for retrieving a single Thread, including nested replies. """
+    
+    # Override 'reply_count' and use a nested list of replies for depth
+    reply_count = serializers.SerializerMethodField()
+    
+    # Self-referential nesting for replies (limited to 1 or 2 levels deep for performance)
+    replies = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = Thread
+        fields = [
+            'id', 'title', 'content', 'user', 'created_at', 
+            'parent_thread', 'color', 'reply_count', 'replies'
+        ]
+
+    def get_replies(self, obj):
+        # Only return direct replies. If further nesting is needed, you'd define 
+        # a ReplySerializer and use it here.
+        direct_replies = obj.reply.all()
+        return ThreadSerializer(direct_replies, many=True).data
+
+    def get_reply_count(self, obj):
+        return obj.reply.count()

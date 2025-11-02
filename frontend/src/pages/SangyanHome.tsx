@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight, Calendar, BookOpen, Users, Lightbulb, TrendingUp, Star, Sparkles, Zap } from 'lucide-react';
+import { ArrowRight, Calendar, BookOpen, Users, Lightbulb, TrendingUp, Star, Sparkles, Zap, Paperclip } from 'lucide-react';
 import { motion, useScroll, useTransform, useInView, Variants } from 'framer-motion';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
@@ -9,6 +9,7 @@ import EventCard from '../components/EventCard';
 import Newsletter from '../components/Newsletter';
 import { SANGYAN_CONFIG } from '../config/sangyan.config';
 import { Blog, Event } from '../types';
+import { title } from 'process';
 
 const featuredBlogs: Blog[] = [
   {
@@ -214,6 +215,12 @@ const SangyanHome: React.FC = () => {
       title: 'Collaborative Community',
       description: 'Connect with curious minds from top institutes across India.',
       link: '/about'
+    },
+    {
+      icon: Paperclip,
+      title: 'Blogs',
+      description: 'Explore innovative projects and research initiatives by our community members.',
+      link: '/blogs'
     }
   ];
 

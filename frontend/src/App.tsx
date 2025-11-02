@@ -9,6 +9,7 @@ import './index.css';
 import Profile from './pages/Profile';
 import ParasWallet from './pages/ParasWallet';
 import React from 'react';
+import BlogPage from './pages/BlogPage';
 
 // Lazy load pages for better performance
 const SangyanHome = lazy(() => import('./pages/SangyanHome'));
@@ -57,10 +58,10 @@ function App() {
 
               {/* Protected routes - require authentication */}
               <Route
-                path="/blog"
+                path="/blogs"
                 element={
                   <ProtectedRoute>
-                    <BlogList />
+                    <BlogPage />
                   </ProtectedRoute>
                 }
               />

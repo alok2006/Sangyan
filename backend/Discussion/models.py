@@ -22,6 +22,28 @@ class ParasTransaction(models.Model):
     def __str__(self):
         return f"{self.user.email} - {self.transaction_type} of {self.amount} at {self.timestamp.date()}"
 
+class Thread(models.Model):
+    class RandomColor(models.TextChoices):
+        RED = '#FF5733', 'Red'
+        BLUE = '#337AFF', 'Blue'
+        GREEN = '#33FF57', 'Green'
+        PURPLE = '#8E33FF', 'Purple'
+        ORANGE = '#FF8C33', 'Orange'
+        YELLOW = '#FFF333', 'Yellow'
+        PINK = '#FF33A8', 'Pink'
+        TEAL = '#33FFF3', 'Teal'
+        GREY = '#A9A9A9', 'Grey'
+
+    title = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='threads')
+    parent_thread = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='reply')
+    content = models.TextField()
+    #### GIve me color palltte for Dark Theme... and choose random color from that 
+    color = models.TextField(choices=RandomColor.choices, default=RandomColor.GREY)
+    def __str__(self):
+        return self.title
+
 class User(AbstractUser):
     # id = models.CharField(max_length=255, unique=True, blank=True,primary_key=True)
     # 
@@ -102,7 +124,9 @@ class Blog(models.Model):
     views = models.PositiveIntegerField(default=0)
     likes = models.PositiveIntegerField(default=0)
     featured = models.BooleanField(default=False)
-
+    
+    is_premuim = models.BooleanField(default=False)
+    
     class Meta:
         ordering = ['-publishedAt']
 

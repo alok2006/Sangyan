@@ -43,7 +43,7 @@ const Navbar: React.FC = () => {
 
     const authenticatedLinks = [
         { name: 'Home', path: '/' },
-        { name: 'Blogs', path: '/blog' },
+        { name: 'Blogs', path: '/blogs' },
         { name: 'Events', path: '/events' },
         { name: 'Resources', path: '/resources' },
         { name: 'About', path: '/about' },
