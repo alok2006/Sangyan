@@ -201,7 +201,7 @@ const Navbar: React.FC = () => {
                                                             <div className="flex items-center gap-2"> <Gem className="w-4 h-4 text-amber-400" /> <span className="text-xs text-amber-300 font-semibold">Paras Stones</span> </div>
                                                             <span className="text-base font-bold text-amber-100">{parasStones.toLocaleString()}</span>
                                                         </div>
-                                                        <p className="text-xs text-amber-300/60 mt-1">Value: **₹{rupeeValue}**</p>
+                                                        <p className="text-xs text-amber-300/60 mt-1">Value: ₹{rupeeValue}</p>
                                                     </div>
                                                 )}
                                                 {/* Menu Items */}
@@ -224,13 +224,13 @@ const Navbar: React.FC = () => {
                                         to="/login"
                                         className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-full transition-all duration-200 flex items-center gap-2"
                                     >
-                                        <LogIn className='w-4 h-4' /> **Sign In**
+                                        <LogIn className='w-4 h-4' /> Sign In
                                     </Link>
                                     <Link
                                         to="/signup"
                                         className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full hover:from-blue-600 hover:to-cyan-600 transition-all duration-200 shadow-md shadow-blue-500/30"
                                     >
-                                        **Sign Up**
+                                        Sign Up
                                     </Link>
                                 </div>
                             )}
@@ -321,14 +321,14 @@ const Navbar: React.FC = () => {
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-all"
                                         >
-                                            <LogIn className="w-5 h-5" /> <span>**Sign In**</span>
+                                            <LogIn className="w-5 h-5" /> <span>Sign In</span>
                                         </Link>
                                         <Link
                                             to="/signup"
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className="w-full px-4 py-3 text-sm font-medium text-center text-white bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all shadow-lg shadow-blue-500/25"
                                         >
-                                            **Sign Up**
+                                            Sign Up
                                         </Link>
                                     </div>
                                 )}

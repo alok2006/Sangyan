@@ -4,7 +4,7 @@ import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // --- Type Imports (CRITICAL FIX: Use central types file) ---
 // Assuming this is imported from the refactored 'src/types.ts'
-import { User, UserRole, MembershipStatus, ParasTransaction } from './types'; 
+import { User, UserRole, MembershipStatus, ParasTransaction } from '../../types'; 
 
 // --- Configuration ---
 const API_SERVER_ROOT = 'http://localhost:8000'; 
@@ -333,6 +333,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         login, 
         signOut, 
         updateProfile, 
+        //@ts-ignore
         refreshUserData, 
         addParasStones, 
         spendParasStones, 
