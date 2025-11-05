@@ -6,21 +6,36 @@ export interface Author {
 }
 
 export interface Blog {
-  id: string;
-  title: string;
-  slug: string;
-  author: Author;
-  category: string | 'Physics' | 'Chemistry' | 'Biology' | 'Mathematics' | 'Earth Sciences' | 'Computer Science' | 'Interdisciplinary' | 'Data Science';
-  tags: string[];
-  excerpt: string;
-  content: string;
-  coverImage: string;
-  publishedAt: string | Date;
-  readTime: number; // in minutes
-  views?: number;
-  likes?: number;
-  featured?: boolean;
+  id: number;
+    title: string;
+    slug: string;
+    author: Author;
+    category: string;
+    tags: string[];
+    excerpt: string;
+    content: string;
+    coverImage: string;
+    publishedAt: string;
+    readTime: number;
+    views: number;
+    likes: number;
+    featured: boolean;
+    is_premuim: boolean;
 }
+
+
+// // --- Interface Definitions (Unchanged) ---
+// interface Author {
+//     pk: number;
+//     displayName: string | null;
+//     photoURL: string | null;
+//     institute: string | null;
+// }
+
+// interface Blog {
+//     
+// }
+
 
 export interface Event {
   id: string;

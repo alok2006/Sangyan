@@ -3,12 +3,10 @@ import toast from 'react-hot-toast';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
 // --- Configuration ---
-// The base URL for the Django server (e.g., http://localhost:8000)
 const API_SERVER_ROOT = 'http://localhost:8000'; 
-// The base URL for the API router (where /users/me/ lives)
 const API_ROUTER_BASE = `${API_SERVER_ROOT}/api/`; 
 
-// --- Interface Definitions (Unchanged) ---
+// --- Interface Definitions ---
 export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN'; 
 export type MembershipStatusType = 'pending' | 'approved' | 'rejected';
 
@@ -35,9 +33,13 @@ export interface UserData {
     coins: number;
 }
 
+// 🎯 FIX 1: Defined AuthUser to be a subset of UserData (the essential fields).
 export interface AuthUser {
     uid: string;
     email: string;
+    displayName: string | null;
+    photoURL: string | null;
+    role: UserRole;
 }
 
 interface AuthContextType {
@@ -68,9 +70,8 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
-// Create a configured Axios instance with the API ROUTER base
 const axiosInstance: AxiosInstance = axios.create({
-    baseURL: API_ROUTER_BASE, // Set the base URL for router endpoints
+    baseURL: API_ROUTER_BASE,
     headers: {
         'Content-Type': 'application/json',
     },
@@ -104,14 +105,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
 
     const fetchUserData = useCallback(async () => {
-        // Corrected URL: '/users/me/' is relative to API_ROUTER_BASE
+        // NOTE: Keeping the endpoint as 'users/me/' which relies on the token for identification.
         const URL = 'users/me/'; 
 
         try {
             const response = await axiosInstance.get(URL);
             const data = response.data;
             
-            // ... (Mapping Logic - Unchanged) ...
+            // Map the full UserData response
             const mappedData: UserData = {
                 uid: data.uid, email: data.email, displayName: data.displayName,
                 photoURL: data.photoURL || null, role: data.role as UserRole,
@@ -124,7 +125,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 })) || [],
             };
             
-            setUser({ uid: mappedData.uid, email: mappedData.email || '' });
+            // 🎯 FIX 2: Set ALL relevant data fields to the 'user' state.
+            setUser({ 
+                uid: mappedData.uid, 
+                email: mappedData.email, 
+                displayName: mappedData.displayName,
+                photoURL: mappedData.photoURL,
+                role: mappedData.role
+            });
             return mappedData;
         } catch (error) {
             const axiosErr = error as AxiosError;
@@ -144,10 +152,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }, [fetchUserData, getAuthToken]);
     
-    // --- LOGIN IMPLEMENTATION (CORRECTED) ---
+    // --- LOGIN IMPLEMENTATION ---
     const login = useCallback(async (email: string, password: string): Promise<boolean> => {
         try {
-            // FIX A: Use the ABSOLUTE URL for the JWT token endpoint since it is NOT under API_ROUTER_BASE
             const TOKEN_URL = `${API_SERVER_ROOT}/api/token/`;
             
             const response = await axios.post(TOKEN_URL, {
@@ -155,27 +162,29 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 password: password,
             });
 
-            // FIX B: Retrieve the 'access' token specifically
             const { access } = response.data; 
             
             if (access) {
                 localStorage.setItem('authToken', access);
                 // Fetch detailed user data to populate context
-                await refreshUserData(); 
+                const success = await refreshUserData();
+                if (!success) {
+                    // Log out if we get a token but fail to fetch data immediately
+                    signOut(false); 
+                    throw new Error("Login successful, but failed to retrieve user data.");
+                }
                 return true;
             }
             return false;
         } catch (error) {
             console.error('Login Error:', error);
-            // Throwing the error keeps the context clean; the consuming component should handle the toast.
             throw error;
         }
-    }, [refreshUserData]);
+    }, [refreshUserData, signOut]);
     // --- END LOGIN IMPLEMENTATION ---
     
-    // --- Interceptors Setup ---
+    // --- Interceptors Setup (Unchanged) ---
     useEffect(() => {
-        // Request Interceptor: Add Authorization header to every request
         const requestInterceptor = axiosInstance.interceptors.request.use(
             (config) => {
                 const token = getAuthToken();
@@ -188,13 +197,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             (error) => Promise.reject(error)
         );
 
-        // Response Interceptor: Handle global 401 errors
         const responseInterceptor = axiosInstance.interceptors.response.use(
             (response) => response,
             (error: AxiosError) => {
                 if (error.response?.status === 401) {
-                    // Check if it's not a direct token request
-                    if (!error.config?.url?.includes('/api/token/')) { // Check full path including /api/token/
+                    if (!error.config?.url?.includes('/api/token/')) {
                         toast.error('Session expired. Please log in again.');
                         setTimeout(() => signOut(false), 0); 
                     }
@@ -210,7 +217,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [getAuthToken, signOut]);
 
 
-    // --- Initialization Effect ---
+    // --- Initialization Effect (Unchanged) ---
     useEffect(() => {
         const initializeAuth = async () => {
             if (getAuthToken()) {
@@ -223,7 +230,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [fetchUserData, getAuthToken]);
 
 
-    // --- Other API Action Functions (Unchanged logic) ---
+    // --- Other API Action Functions ---
     
     const addParasStones = useCallback(async (amount: number, reason: string) => {
         if (!user) throw new Error('No user logged in');
@@ -266,6 +273,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         }
     }, [user, userData, refreshUserData]);
 
+    // 🎯 FIX 3: Update local 'user' state immediately after a successful profile update
     const updateProfile = useCallback(async (
         displayName: string, 
         photoURL?: string, 
@@ -282,9 +290,15 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         try {
             await axiosInstance.put(`/users/${user.uid}/`, updateData);
             
-            setUser(prev => prev ? { ...prev, displayName } : null); 
+            // Optimistically update the main 'user' state immediately
+            setUser(prev => prev ? { 
+                ...prev, 
+                displayName, 
+                // Only update photoURL if it was part of the updateData 
+                photoURL: photoURL !== undefined ? photoURL : prev.photoURL 
+            } : null); 
             
-            await refreshUserData();
+            await refreshUserData(); // Triggers full data fetch and syncs userData
             toast.success('Profile updated successfully');
         } catch (error) {
             const axiosErr = error as AxiosError;

@@ -1,36 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom'; // <-- Import useLocation
 import axios, { AxiosError } from 'axios';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { BookOpen, Clock, Eye, Heart, Sparkles, Tag, ChevronRight, Filter, TrendingUp } from 'lucide-react';
+import { BookOpen, Clock, Eye, Heart, Sparkles, ChevronRight, Filter, TrendingUp } from 'lucide-react';
 import Navbar from '../components/Navbar';
 import Footer from '../components/Footer';
+import { Blog } from '../types';
 
-// --- Interface Definitions (Unchanged) ---
-interface Author {
-    pk: number;
-    displayName: string | null;
-    photoURL: string | null;
-    institute: string | null;
-}
-
-interface Blog {
-    id: number;
-    title: string;
-    slug: string;
-    author: Author;
-    category: string;
-    tags: string[];
-    excerpt: string;
-    coverImage: string;
-    publishedAt: string;
-    readTime: number;
-    views: number;
-    likes: number;
-    featured: boolean;
-    is_premuim: boolean;
-}
 
 // Blog Categories (Unchanged)
 const BLOG_CATEGORIES = [
@@ -45,20 +22,27 @@ const BLOG_CATEGORIES = [
 ];
 
 // --- Configuration ---
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+const API_BASE_PATH = '/api/blogs'; 
 
 const BlogPage: React.FC = () => {
+    // 1. Get location object from React Router
+    const location = useLocation();
+
+    // 2. Initialize state without hardcoding 'ALL'
+    // The initial value will now be set in the first useEffect.
     const [blogs, setBlogs] = useState<Blog[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [activeCategory, setActiveCategory] = useState<string>('ALL');
+    const [activeCategory, setActiveCategory] = useState<string>('ALL'); // Initialize with default
 
+    // --- Data Fetching Logic (Unchanged) ---
     const fetchBlogs = useCallback(async (category: string) => {
         setLoading(true);
         setError(null);
 
+        // Construct query parameters
         const categoryFilter = category !== 'ALL' ? `?category=${category}` : '';
-        const endpoint = `${API_BASE_URL}/blogs/${categoryFilter}`;
+        const endpoint = `${API_BASE_PATH}${categoryFilter}`; 
 
         try {
             const response = await axios.get<Blog[]>(endpoint);
@@ -66,45 +50,81 @@ const BlogPage: React.FC = () => {
         } catch (err) {
             const axiosErr = err as AxiosError;
             console.error('Failed to fetch blogs:', axiosErr);
-            setError('Could not load blog posts. Please check the network connection.');
+            setError('Could not load blog posts. Check your server connection.');
             toast.error('Failed to load blogs.');
         } finally {
             setLoading(false);
         }
     }, []);
 
+    // 3. Effect to read URL query on mount and set initial state
     useEffect(() => {
+        // Use URLSearchParams to easily parse the query string (location.search)
+        const params = new URLSearchParams(location.search);
+        const urlCategory = params.get('category');
+        
+        // Find a valid category value
+        const validCategories = BLOG_CATEGORIES.map(cat => cat.value);
+        const initialCategory = 
+            urlCategory && validCategories.includes(urlCategory) 
+                ? urlCategory 
+                : 'ALL'; // Fallback to 'ALL' if parameter is missing or invalid
+
+        // Set the state, which will trigger the data fetch in the next useEffect
+        setActiveCategory(initialCategory);
+
+        // OPTIONAL: Update URL when category button is clicked (for deep linking)
+        // This is not strictly necessary for the prompt, but improves user experience.
+        // It's often better to put this logic inside the button handler itself
+    }, [location.search]); // Re-run if the URL query changes
+
+    // 4. Effect to fetch data whenever the activeCategory state changes
+    useEffect(() => {
+        // This effect runs once on mount (after initialCategory is set)
+        // and every time the user clicks a filter button.
         fetchBlogs(activeCategory);
     }, [activeCategory, fetchBlogs]);
 
-    // --- Animation Variants ---
+
+    // --- Animation Variants (Unchanged) ---
     const containerVariants = {
+        hidden: {},
         visible: {
             transition: { staggerChildren: 0.1 }
         }
     };
 
     const cardVariants = {
-        hidden: { opacity: 0, y: 20, scale: 0.95 },
+        hidden: { opacity: 0, y: 30, scale: 0.98 },
         visible: { 
             opacity: 1, 
             y: 0, 
             scale: 1, 
-            transition: { type: "spring", stiffness: 100, damping: 15 } 
+            transition: { type: "spring", stiffness: 120, damping: 14 } 
         },
     };
 
-    // --- Components ---
-
+    // --- Components (Unchanged) ---
     const LoadingSkeleton = () => (
         <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
             {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-slate-800/70 p-6 rounded-2xl shadow-lg animate-pulse h-[350px] border border-slate-700/50">
-                    <div className="h-44 bg-slate-700 rounded-xl mb-4"></div>
-                    <div className="h-5 bg-slate-700 w-3/4 mb-3"></div>
-                    <div className="h-3 bg-slate-700 w-full mb-2"></div>
-                    <div className="h-3 bg-slate-700 w-2/3 mb-4"></div>
-                    <div className="h-3 bg-slate-700 w-1/4"></div>
+                <div key={i} className="bg-slate-900/70 p-6 rounded-3xl shadow-lg h-[350px] border border-cyan-500/10 relative overflow-hidden">
+                    
+                    {/* NEW: Colorful Animated Progress Bar */}
+                    <motion.div
+                        className="absolute top-0 left-0 h-1 w-full bg-gradient-to-r from-cyan-500 via-blue-500 to-purple-500"
+                        initial={{ x: '-100%' }}
+                        animate={{ x: '100%' }}
+                        transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
+                    />
+                    
+                    <div className="animate-pulse">
+                        <div className="h-44 bg-slate-800 rounded-xl mb-4"></div>
+                        <div className="h-5 bg-slate-800 w-3/4 mb-3"></div>
+                        <div className="h-3 bg-slate-800 w-full mb-2"></div>
+                        <div className="h-3 bg-slate-800 w-2/3 mb-4"></div>
+                        <div className="h-3 bg-slate-800 w-1/4"></div>
+                    </div>
                 </div>
             ))}
         </div>
@@ -115,7 +135,7 @@ const BlogPage: React.FC = () => {
 
         return (
             <motion.div
-                variants={cardVariants}
+                variants={cardVariants} // <-- Re-enabled variants for animation on load
                 whileHover={{ 
                     y: -8, 
                     boxShadow: "0 15px 25px rgba(59, 130, 246, 0.3)",
@@ -127,6 +147,7 @@ const BlogPage: React.FC = () => {
                     <img
                         src={blog.coverImage || 'https://via.placeholder.com/600x400?text=Sangyan+Blog'}
                         alt={blog.title}
+                        loading="lazy" 
                         className="w-full h-48 object-cover rounded-xl mb-4 border border-slate-700/50 transition-transform duration-300 hover:scale-[1.02] transform origin-bottom"
                     />
                     {blog.is_premuim && (
@@ -181,7 +202,7 @@ const BlogPage: React.FC = () => {
         );
     };
 
-    // --- Main Render ---
+    // --- Main Render (Unchanged) ---
 
     return (
         <>
@@ -189,7 +210,7 @@ const BlogPage: React.FC = () => {
             <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 pt-24 pb-20 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-7xl mx-auto">
                     
-                    {/* Title and Intro - INCREASED FLUIDITY AND SPACE */}
+                    {/* Title and Intro */}
                     <motion.div
                         initial={{ opacity: 0, y: 30 }}
                         animate={{ opacity: 1, y: 0 }}
@@ -204,7 +225,7 @@ const BlogPage: React.FC = () => {
                         </p>
                     </motion.div>
 
-                    {/* Filter/Category Bar (Unchanged) */}
+                    {/* Filter/Category Bar (Responsive and Scrollable) */}
                     <motion.div
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}

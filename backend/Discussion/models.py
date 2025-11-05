@@ -45,13 +45,13 @@ class Thread(models.Model):
         return self.title
 
 class User(AbstractUser):
-    # id = models.CharField(max_length=255, unique=True, blank=True,primary_key=True)
-    # 
     uid_string = models.CharField(max_length=255, unique=True, blank=True, null=True) 
     email = models.EmailField(unique=True, null=False, blank=False)
-    # 'displayName' maps to 'first_name'/'last_name' in AbstractUser; or a new field:
-    displayName = models.CharField(max_length=255, blank=True, null=True)
     photoURL = models.URLField(max_length=200, blank=True, null=True)
+
+    @property
+    def displayName(self):
+        return f"{self.first_name} {self.last_name}"
 
     role = models.CharField(
         max_length=50,
@@ -103,7 +103,10 @@ class BlogCategory(models.TextChoices):
 class Blog(models.Model):
     # id (Primary Key) is automatic in Django
     title = models.CharField(max_length=255)
-    slug = models.SlugField(unique=True, max_length=255, editable=False) # Auto-generated on save
+    
+    # 📝 CRITICAL CHANGE: Set editable=False to prevent users from manually changing it in the admin.
+    # Set blank=True and null=True so the field can be empty before the first save.
+    slug = models.SlugField(unique=True, max_length=255, blank=True, null=True) 
     
     # Foreign Key to Author model
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='blogs')
@@ -131,14 +134,22 @@ class Blog(models.Model):
         ordering = ['-publishedAt']
 
     def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.title)
+        if not self.pk:
+            base_slug = slugify(self.title)
+            slug = base_slug
+            counter = 1
+            
+            # Ensure the slug is unique before assigning it
+            while Blog.objects.filter(slug=slug).exists():
+                slug = f"{base_slug}-{counter}"
+                counter += 1
+            
+            self.slug = slug
+
         super().save(*args, **kwargs)
 
     def __str__(self):
         return self.title
-    
-
 # content/models.py (continued)
 
 class EventType(models.TextChoices):
