@@ -1,10 +1,35 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+# Alias the Thread model correctly to access its choices
 from .models import (
-    User, ParasTransaction, Blog, BlogCategory, 
-    Event, EventType, EventMode, Resource, ResourceCategory, 
-    Thread, UserRole, MembershipStatus, Thread as ThreadModel # Use ThreadModel to avoid name conflict in models import
+    User, ParasTransaction, Blog, 
+    Event, Resource, Thread as ThreadModel ,
+    DarkThemeColor
 )
 import random
+
+# --- CORE AUTHENTICATION SERIALIZERS ---
+
+class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """
+    CUSTOM JWT SERIALIZER: Overrides the default to include the user's PK (as 'uid') and email
+    in the response body upon successful login, aligning with UserSerializer output.
+    """
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # Use primary key (pk) as the canonical identifier 'uid'
+        token['uid'] = str(user.pk) 
+        return token
+
+    def validate(self, attrs):
+        data = super().validate(attrs)
+        # Add the 'uid' and 'email' directly to the JSON response data
+        data['uid'] = str(self.user.pk)
+        data['email'] = self.user.email
+        return data
+
+# Note: CustomTokenObtainPairView remains the same, using this serializer.
 
 # --- USER AND TRANSACTION SERIALIZERS ---
 
@@ -17,62 +42,94 @@ class ParasTransactionSerializer(serializers.ModelSerializer):
 
 
 class UserSerializer(serializers.ModelSerializer):
-    """ Serializer for the custom User model (Profile/Registration). """
+    """ 
+    CRITICAL REFACTOR: Serializer for the custom User model (Profile/Registration). 
+    Aligned with the removal of 'username' as a key identifier.
+    """
     
-    # 1. parasHistory: Nested serializer for transactions
+    # Read-only fields derived from the model
+    uid = serializers.CharField(source='pk', read_only=True) 
+    createdAt = serializers.DateTimeField(source='date_joined', read_only=True)
     parasHistory = ParasTransactionSerializer(source='paras_history', many=True, read_only=True)
     
-    # 2. uid (pk) mapping: Use the inherited integer primary key (pk) as 'uid'
-    uid = serializers.IntegerField(source='pk', read_only=True)
+    # CRITICAL FIX: Use SerializerMethodField to expose the model's @property
+    displayName = serializers.SerializerMethodField()
     
-    # 3. createdAt is mapped from date_joined
-    createdAt = serializers.DateTimeField(source='date_joined', read_only=True)
+    # Ensure first_name/last_name are included but not required for PATCH
+    first_name = serializers.CharField(required=False, allow_blank=True)
+    last_name = serializers.CharField(required=False, allow_blank=True)
     
     class Meta:
         model = User
         fields = [
-            'uid', 'uid_string', 'email', 'username', 'displayName', 'photoURL', 'role', 
+            'uid', 'email', 'displayName', 'photoURL', 'role', 
             'membershipStatus', 'createdAt', 'institute', 'course', 'bio', 
-            'parasStones', 'coins', 'parasHistory', 'is_staff', 'is_superuser','password'
+            'parasStones', 'coins', 'parasHistory', 'is_staff', 'is_superuser',
+            'first_name', 'last_name', 'password',
         ]
+        # Added 'email' to read_only_fields for standard update/patch operations
         read_only_fields = [
-            'uid', 'uid_string', 'role', 'parasStones', 'coins', 'createdAt', 
-            'is_staff', 'is_superuser', 'membershipStatus', 'parasHistory'
+            'uid', 'role', 'parasStones', 'coins', 'createdAt', 
+            'is_staff', 'is_superuser', 'membershipStatus', 'parasHistory', 'email'
         ]
-        extra_kwargs = {
-            'password': {'write_only': True, 'required': True},
-            'username': {'required': True},
-            'email': {'required': True},
-        }
+        extra_kwargs = {'password': {'write_only': True}}
+
+    def get_displayName(self, obj: User):
+        """ Retrieves the @property displayName from the User model. """
+        return obj.displayName
 
     def create(self, validated_data):
-        # Handles user creation with password hashing and custom field population
+        """ Creates a user using email and password, consistent with USERNAME_FIELD='email'. """
+        # We must explicitly handle the password and other fields
         user = User.objects.create_user(
-            username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
             first_name=validated_data.get('first_name', ''),
             last_name=validated_data.get('last_name', ''),
-            institute=validated_data.get('institute'),
-            course=validated_data.get('course'),
-            displayName=validated_data.get('displayName'),
+            # Note: AbstractUser's 'username' is still required by the base model, 
+            # so we use a fallback value (email) if not provided by the client.
+            username=validated_data.get('username', validated_data['email']),
         )
+        # Handle other custom fields
+        user.institute = validated_data.get('institute')
+        user.course = validated_data.get('course')
+        user.bio = validated_data.get('bio')
+        user.photoURL = validated_data.get('photoURL')
+        user.save()
         return user
+    
+    def update(self, instance, validated_data):
+        """ Handles updating user fields. """
+        
+        # Handle password update separately if it is in validated_data
+        password = validated_data.pop('password', None)
+        if password:
+            instance.set_password(password)
+        
+        # Standard update for all other fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        
+        instance.save()
+        return instance
+    
+
+# --- AUTHOR SERIALIZER (Unchanged, uses 'uid' consistently) ---
+
+class AuthorPublicSerializer(serializers.ModelSerializer):
+    """ Shallow serializer for displaying author information on content. """
+    uid = serializers.CharField(source='pk', read_only=True) 
+    class Meta:
+        model = User
+        fields = ['uid', 'displayName', 'photoURL', 'institute','bio']
 
 
 # --- CONTENT SERIALIZERS ---
 
-class AuthorPublicSerializer(serializers.ModelSerializer):
-    """ Shallow serializer for displaying author information on content. """
-    class Meta:
-        model = User
-        fields = ['pk', 'displayName', 'photoURL', 'institute','bio']
-
-
 class BlogSerializer(serializers.ModelSerializer):
     """ Serializer for the Blog model. """
-    
-    author = AuthorPublicSerializer(read_only=True)
+    # Keep read_only=True for author to prevent creation/update via Blog serializer
+    author = AuthorPublicSerializer(read_only=True) 
     
     class Meta:
         model = Blog
@@ -86,16 +143,22 @@ class BlogSerializer(serializers.ModelSerializer):
 
 class EventSpeakerSerializer(serializers.ModelSerializer):
     """ Simplified serializer for the speaker object within the Event. """
+    # Ensure this is consistent with the User model's properties
+    displayName = serializers.SerializerMethodField()
     
     class Meta:
         model = User
         fields = ['displayName', 'bio', 'institute', 'photoURL']
         
+    def get_displayName(self, obj: User):
+        return obj.displayName
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
+        # Using a fixed key structure for frontend consumption
         return {
             'name': representation.pop('displayName', None),
-            'designation': representation.pop('bio', None), # Using bio as proxy for designation
+            'designation': representation.pop('bio', None), # Used bio as designation
             'institute': representation.pop('institute', None),
             'avatar': representation.pop('photoURL', None),
         }
@@ -133,17 +196,16 @@ class ResourceSerializer(serializers.ModelSerializer):
 class ThreadSerializer(serializers.ModelSerializer):
     """ Serializer for the Thread model (Forum posts and replies). """
 
-    user = AuthorPublicSerializer(read_only=True)
+    user = AuthorPublicSerializer(read_only=True, source='user') 
     reply_count = serializers.SerializerMethodField()
     
-    # Overriding color to ensure a default is chosen if not provided by the client
+    # CRITICAL FIX: Reference the directly imported DarkThemeColor class
     color = serializers.ChoiceField(
-        choices=Thread.RandomColor.choices, 
+        choices=DarkThemeColor.choices, 
         required=False
     )
-    
     class Meta:
-        model = Thread
+        model = ThreadModel
         fields = [
             'id', 'title', 'content', 'user', 'created_at', 
             'parent_thread', 'color', 'reply_count'
@@ -151,12 +213,13 @@ class ThreadSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'user', 'reply_count']
         
     def get_reply_count(self, obj):
-        return obj.reply.count()
+        # CRITICAL FIX: related_name changed from 'reply' to 'replies'
+        return obj.replies.count()
     
     def validate_color(self, value):
-        # If no color is provided by the user, randomly select one from the choices
         if not value:
-            return random.choice(Thread.RandomColor.choices)[0]
+            # Pick a random key from the choices map
+            return random.choice(ThreadModel.DarkThemeColor.choices)[0]
         return value
 
 
@@ -164,19 +227,22 @@ class ThreadDetailSerializer(ThreadSerializer):
     """ Serializer used for retrieving a single Thread, including nested replies. """
     
     reply_count = serializers.SerializerMethodField()
+    # CRITICAL FIX: Use the correct, plural related_name 'replies'
     replies = serializers.SerializerMethodField()
     
     class Meta:
-        model = Thread
+        model = ThreadModel
         fields = [
             'id', 'title', 'content', 'user', 'created_at', 
             'parent_thread', 'color', 'reply_count', 'replies'
         ]
 
     def get_replies(self, obj):
-        # Uses the shallow ThreadSerializer for the nested replies (limits depth)
-        direct_replies = obj.reply.all()
+        # CRITICAL FIX: Use the correct, plural related_name 'replies'
+        direct_replies = obj.replies.all()
+        # Ensure nested replies use the correct ThreadSerializer alias
         return ThreadSerializer(direct_replies, many=True).data
 
     def get_reply_count(self, obj):
-        return obj.reply.count()
+        # CRITICAL FIX: Use the correct, plural related_name 'replies'
+        return obj.replies.count()

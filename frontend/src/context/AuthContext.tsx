@@ -2,53 +2,37 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import toast from 'react-hot-toast';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
+// --- Type Imports (CRITICAL FIX: Use central types file) ---
+// Assuming this is imported from the refactored 'src/types.ts'
+import { User, UserRole, MembershipStatus, ParasTransaction } from './types'; 
+
 // --- Configuration ---
 const API_SERVER_ROOT = 'http://localhost:8000'; 
 const API_ROUTER_BASE = `${API_SERVER_ROOT}/api/`; 
+const TOKEN_URL = `${API_SERVER_ROOT}/api/token/`; // Centralize token URL
 
-// --- Interface Definitions ---
-export type UserRole = 'STUDENT' | 'TEACHER' | 'ADMIN'; 
-export type MembershipStatusType = 'pending' | 'approved' | 'rejected';
+// --- Context Interfaces (SIMPLIFIED) ---
 
-export interface ParasTransaction {
-    amount: number;
-    transaction_type: string;
-    reason: string;
-    timestamp: string;
-}
-
-export interface UserData {
-    uid: string; 
-    email: string;
-    displayName: string | null;
-    photoURL: string | null;
-    role: UserRole;
-    membershipStatus?: MembershipStatusType;
-    createdAt?: string;
-    institute?: string;
-    course?: string;
-    bio?: string;
-    parasStones: number;
-    parasHistory?: ParasTransaction[]; 
-    coins: number;
-}
-
-// 🎯 FIX 1: Defined AuthUser to be a subset of UserData (the essential fields).
-export interface AuthUser {
-    uid: string;
-    email: string;
-    displayName: string | null;
-    photoURL: string | null;
-    role: UserRole;
-}
-
+/**
+ * Interface defining the methods and state of the Auth Context.
+ * Now uses the central 'User' interface.
+ */
 interface AuthContextType {
-    user: AuthUser | null;
-    userData: UserData | null;
+    // We use the full User type here, even though some fields might be null on initial load
+    currentUser: User | null; // Renamed from userData for clarity
+    isAuthenticated: boolean;
     loading: boolean;
     login: (email: string, password: string) => Promise<boolean>;
     signOut: (callApi?: boolean) => Promise<void>;
-    updateProfile: (displayName: string, photoURL?: string, institute?: string, course?: string, bio?: string) => Promise<void>;
+   updateProfile: (
+        // CRITICAL: Aligned with Django field names
+        first_name: string, 
+        last_name: string, 
+        photoURL?: string, 
+        institute?: string, 
+        course?: string, 
+        bio?: string
+    ) => Promise<void>;
     refreshUserData: () => Promise<void>;
     addParasStones: (amount: number, reason: string) => Promise<void>;
     spendParasStones: (amount: number, reason: string) => Promise<boolean>;
@@ -56,6 +40,23 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+// Helper function to decode JWT payload (Unchanged, but useful)
+const decodeTokenUID = (token: string): string | null => {
+    try {
+        const base64Url = token.split('.')[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+
+        const payload = JSON.parse(jsonPayload);
+        // JWTs typically store the user ID as 'user_id' or 'uid' (our custom token uses 'uid')
+        return payload.uid || payload.user_id || null; 
+    } catch (e) {
+        return null;
+    }
+};
 
 // --- Hooks ---
 export const useAuth = () => {
@@ -70,8 +71,9 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
+// Create a configured Axios instance with the API ROUTER base
 const axiosInstance: AxiosInstance = axios.create({
-    baseURL: API_ROUTER_BASE,
+    baseURL: API_ROUTER_BASE, 
     headers: {
         'Content-Type': 'application/json',
     },
@@ -79,118 +81,169 @@ const axiosInstance: AxiosInstance = axios.create({
 
 // --- Auth Provider Component ---
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-    const [user, setUser] = useState<AuthUser | null>(null);
-    const [userData, setUserData] = useState<UserData | null>(null);
+    // CRITICAL FIX: Use the central User interface and simplify state
+    const [currentUser, setCurrentUser] = useState<User | null>(null); 
     const [loading, setLoading] = useState(true);
 
-    const getAuthToken = useCallback((): string | null => {
-        return localStorage.getItem('authToken');
-    }, []);
+    const isAuthenticated = !!currentUser;
+    const getAuthToken = useCallback((): string | null => localStorage.getItem('authToken'), []);
+    const getUID = useCallback((): string | null => localStorage.getItem('authUID'), []);
     
+    // 1. SIGN OUT: Clears all credentials
     const signOut = useCallback(async (callApi = true) => {
+        // TODO: Implement API call to token blacklist if needed
         try {
-            if (callApi) {
-                // ... (SignOut Logic)
-            }
+            if (callApi) { 
+                // e.g., await axiosInstance.post('/token/blacklist/', { refresh: refreshToken });
+            } 
             localStorage.removeItem('authToken');
+            localStorage.removeItem('authUID'); 
             delete axiosInstance.defaults.headers.common['Authorization']; 
-            setUser(null);
-            setUserData(null);
+            setCurrentUser(null);
             toast.success('Signed out successfully');
-        } catch (error) {
-            console.error('Error signing out:', error);
-            toast.error('Failed to sign out');
+        } catch (error) { 
+            // Even if the API call fails, we still clear local storage
+            console.error('Sign out error:', error);
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('authUID'); 
+            delete axiosInstance.defaults.headers.common['Authorization']; 
+            setCurrentUser(null);
         }
     }, []);
 
 
+    // 2. FETCH USER DATA: Uses stored UID
     const fetchUserData = useCallback(async () => {
-        // NOTE: Keeping the endpoint as 'users/me/' which relies on the token for identification.
-        const URL = 'users/me/'; 
+        const uid = getUID();
+        const token = getAuthToken();
+
+        if (!uid || !token) {
+            signOut(false);
+            return null;
+        }
+        
+        const URL = `users/${uid}/`; 
 
         try {
             const response = await axiosInstance.get(URL);
-            const data = response.data;
             
-            // Map the full UserData response
-            const mappedData: UserData = {
-                uid: data.uid, email: data.email, displayName: data.displayName,
-                photoURL: data.photoURL || null, role: data.role as UserRole,
-                membershipStatus: data.membershipStatus, createdAt: data.createdAt,
-                institute: data.institute, course: data.course, bio: data.bio,
-                parasStones: data.parasStones, coins: data.coins,
-                parasHistory: data.parasHistory?.map((tx: any) => ({
-                    amount: tx.amount, transaction_type: tx.transaction_type, 
-                    reason: tx.reason, timestamp: tx.timestamp,
-                })) || [],
-            };
+            // CRITICAL FIX: Directly cast the response data to the User type
+            const data: User = response.data;
             
-            // 🎯 FIX 2: Set ALL relevant data fields to the 'user' state.
-            setUser({ 
-                uid: mappedData.uid, 
-                email: mappedData.email, 
-                displayName: mappedData.displayName,
-                photoURL: mappedData.photoURL,
-                role: mappedData.role
-            });
-            return mappedData;
+            // NOTE: We rely on the Serializer to return the correct structure.
+            setCurrentUser(data);
+            return data; 
         } catch (error) {
             const axiosErr = error as AxiosError;
             if (axiosErr.response?.status !== 401) { 
-                console.error('Error fetching user data:', axiosErr.message);
+                console.error(`Error fetching user data:`, axiosErr.message); 
             }
+            // If fetching fails (e.g., 404, 403, or invalid token), sign out
+            signOut(false);
+            return null; 
         }
-        return null;
-    }, [signOut]);
+    }, [signOut, getUID, getAuthToken]);
 
     const refreshUserData = useCallback(async () => {
-        if (getAuthToken()) {
-            const data = await fetchUserData();
-            if (data) {
-                setUserData(data);
-            }
-        }
-    }, [fetchUserData, getAuthToken]);
+        const data = await fetchUserData();
+        return !!data; 
+    }, [fetchUserData]);
     
-    // --- LOGIN IMPLEMENTATION ---
-    const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+    
+    // 3. LOGIN IMPLEMENTATION
+     const login = useCallback(async (email: string, password: string): Promise<boolean> => {
         try {
-            const TOKEN_URL = `${API_SERVER_ROOT}/api/token/`;
+            const response = await axios.post(TOKEN_URL, { email, password });
             
-            const response = await axios.post(TOKEN_URL, {
-                email: email, 
-                password: password,
-            });
+            // CustomTokenObtainPairSerializer adds 'uid' and 'email' to the response body
+            const { access, uid: responseUid } = response.data; 
 
-            const { access } = response.data; 
+            let uid = responseUid;
+            if (access && !uid) {
+                // Fallback: Decode UID from the access token payload
+                uid = decodeTokenUID(access); 
+            }
             
-            if (access) {
+            if (access && uid) {
                 localStorage.setItem('authToken', access);
-                // Fetch detailed user data to populate context
-                const success = await refreshUserData();
+                localStorage.setItem('authUID', uid); 
+                
+                // Immediately set Authorization header for subsequent fetchUserData call
+                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${access}`;
+
+                const success = await fetchUserData();
+                
                 if (!success) {
-                    // Log out if we get a token but fail to fetch data immediately
                     signOut(false); 
-                    throw new Error("Login successful, but failed to retrieve user data.");
+                    toast.error("Login successful, but failed to retrieve user data.");
+                    return false;
                 }
+
+                toast.success(`Welcome, ${currentUser?.displayName || email}!`);
                 return true;
             }
             return false;
         } catch (error) {
             console.error('Login Error:', error);
-            throw error;
+            const axiosErr = error as AxiosError;
+            let errorMessage = 'Login failed. Check credentials.';
+            if (axiosErr.response?.status === 401) {
+                errorMessage = 'Invalid email or password.';
+            }
+            toast.error(errorMessage);
+            return false; // Return false on any login failure
         }
-    }, [refreshUserData, signOut]);
-    // --- END LOGIN IMPLEMENTATION ---
-    
-    // --- Interceptors Setup (Unchanged) ---
+    }, [fetchUserData, signOut, currentUser]); // Added currentUser to dependency array
+
+
+    // 4. UPDATE PROFILE IMPLEMENTATION
+    const updateProfile = useCallback(async (
+        first_name: string, 
+        last_name: string, 
+        photoURL?: string, 
+        institute?: string, 
+        course?: string, 
+        bio?: string
+    ) => {
+        const uid = getUID();
+        if (!uid) {
+            toast.error('Cannot update profile: Not logged in.');
+            return;
+        }
+        
+        // CRITICAL FIX: Ensure keys match Django serializer field names
+        const updateData: Partial<User> = {
+            first_name, 
+            last_name,   
+            photoURL: photoURL, 
+            institute: institute, 
+            course: course, 
+            bio: bio
+        };
+
+        try {
+            // Use PATCH for partial updates, PUT implies replacing the whole resource
+            await axiosInstance.patch(`/users/${uid}/`, updateData);
+            await refreshUserData(); // Fetch fresh data after successful patch
+            toast.success('Profile updated successfully');
+        } catch (error) { 
+            const axiosErr = error as AxiosError;
+            console.error('Profile Update Error:', axiosErr);
+            toast.error('Failed to update profile.');
+            throw error; // Propagate error for component-level handling
+        }
+    }, [refreshUserData, getUID]);
+
+
+    // --- Interceptors Setup (Unchanged but relies on fixed logic) ---
     useEffect(() => {
         const requestInterceptor = axiosInstance.interceptors.request.use(
             (config) => {
                 const token = getAuthToken();
-                if (token) {
+                if (token && !config.headers.Authorization) {
                     config.headers.Authorization = `Bearer ${token}`;
-                    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+                    // Set default for use outside of interceptor flow (e.g., fetchUserData)
+                    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`; 
                 }
                 return config;
             },
@@ -200,11 +253,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const responseInterceptor = axiosInstance.interceptors.response.use(
             (response) => response,
             (error: AxiosError) => {
-                if (error.response?.status === 401) {
-                    if (!error.config?.url?.includes('/api/token/')) {
-                        toast.error('Session expired. Please log in again.');
-                        setTimeout(() => signOut(false), 0); 
-                    }
+                if (error.response?.status === 401 && !error.config?.url?.includes('/api/token/')) {
+                    toast.error('Session expired. Please log in again.');
+                    setTimeout(() => signOut(false), 0); 
                 }
                 return Promise.reject(error);
             }
@@ -217,10 +268,12 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [getAuthToken, signOut]);
 
 
-    // --- Initialization Effect (Unchanged) ---
+    // --- Initialization Effect (Unchanged logic) ---
     useEffect(() => {
         const initializeAuth = async () => {
             if (getAuthToken()) {
+                // Ensure the Authorization header is set before fetchUserData runs
+                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${getAuthToken()}`;
                 await fetchUserData();
             }
             setLoading(false);
@@ -230,10 +283,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [fetchUserData, getAuthToken]);
 
 
-    // --- Other API Action Functions ---
-    
+    // --- Monetary Functions (Logic depends on fixed 'user' state) ---
+    // The logic remains the same, but now it uses 'currentUser'
     const addParasStones = useCallback(async (amount: number, reason: string) => {
-        if (!user) throw new Error('No user logged in');
+        if (!currentUser) throw new Error('No user logged in');
         
         try {
             await axiosInstance.post('/users/paras/add/', { amount, reason });
@@ -245,10 +298,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             console.error('Error adding Paras Stones:', axiosErr);
             toast.error(errorData?.detail || errorData?.message || 'Failed to add Paras Stones');
         }
-    }, [user, refreshUserData]);
+    }, [currentUser, refreshUserData]);
 
     const spendParasStones = useCallback(async (amount: number, reason: string): Promise<boolean> => {
-        if (!user || !userData) {
+        if (!currentUser) {
             toast.error('No user logged in.');
             return false;
         }
@@ -271,61 +324,19 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             toast.error(errorData?.detail || errorData?.message || 'Failed to spend Paras Stones');
             return false;
         }
-    }, [user, userData, refreshUserData]);
-
-    // 🎯 FIX 3: Update local 'user' state immediately after a successful profile update
-    const updateProfile = useCallback(async (
-        displayName: string, 
-        photoURL?: string, 
-        institute?: string, 
-        course?: string, 
-        bio?: string
-    ) => {
-        if (!user) throw new Error('No user logged in');
-        
-        const updateData: Partial<UserData> = {
-            displayName, photoURL, institute, course, bio
-        };
-
-        try {
-            await axiosInstance.put(`/users/${user.uid}/`, updateData);
-            
-            // Optimistically update the main 'user' state immediately
-            setUser(prev => prev ? { 
-                ...prev, 
-                displayName, 
-                // Only update photoURL if it was part of the updateData 
-                photoURL: photoURL !== undefined ? photoURL : prev.photoURL 
-            } : null); 
-            
-            await refreshUserData(); // Triggers full data fetch and syncs userData
-            toast.success('Profile updated successfully');
-        } catch (error) {
-            const axiosErr = error as AxiosError;
-            const errorData = axiosErr.response?.data as { detail?: string } | string;
-            
-            console.error('Error updating profile:', axiosErr);
-            const errorMessage = typeof errorData === 'string' 
-                ? errorData 
-                : errorData?.detail || JSON.stringify(errorData);
-                
-            toast.error(`Failed to update profile: ${errorMessage}`);
-            throw error;
-        }
-    }, [user, refreshUserData]);
-
+    }, [currentUser, refreshUserData]);
 
     const value: AuthContextType = {
-        user,
-        userData,
-        loading,
+        currentUser, 
+        isAuthenticated,
+        loading, 
         login, 
-        signOut,
-        updateProfile,
-        refreshUserData,
-        addParasStones,
-        spendParasStones,
-        getAuthToken,
+        signOut, 
+        updateProfile, 
+        refreshUserData, 
+        addParasStones, 
+        spendParasStones, 
+        getAuthToken
     };
 
     return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

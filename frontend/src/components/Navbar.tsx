@@ -3,7 +3,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Lightbulb, Menu, X, Sparkles, LogOut, Settings,
     ChevronDown, UserCircle, Bell, Gem, LogIn, ExternalLink, Sun, Moon
-} from 'lucide-react'; // Added ExternalLink for better profile button icon
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
@@ -14,10 +14,21 @@ const Navbar: React.FC = () => {
     const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
     const location = useLocation();
     const navigate = useNavigate();
-    const { user, userData, signOut } = useAuth();
+    
+    // CRITICAL FIX: Destructure the refactored context state
+    const { currentUser, isAuthenticated, signOut } = useAuth(); 
     const dropdownRef = useRef<HTMLDivElement>(null);
 
     // --- State and Handlers ---
+
+    // Scroll effect for navbar background change
+    useEffect(() => {
+        const handleScroll = () => {
+            setIsScrolled(window.scrollY > 20);
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
 
     // Close profile dropdown if mobile menu is opened
     useEffect(() => {
@@ -50,7 +61,8 @@ const Navbar: React.FC = () => {
         { name: 'About', path: '/about' },
     ];
 
-    const navLinks = user ? authenticatedLinks : publicLinks;
+    // CRITICAL FIX: Use isAuthenticated flag
+    const navLinks = isAuthenticated ? authenticatedLinks : publicLinks;
     const isActive = (path: string) => location.pathname === path;
 
     const handleSignOut = async () => {
@@ -70,9 +82,10 @@ const Navbar: React.FC = () => {
         setIsMobileMenuOpen(false);
     };
 
-    const userDisplayName = user?.displayName || user?.email?.split('@')[0] || 'Member';
-    const userPhotoURL = user?.photoURL;
-    const parasStones = userData?.parasStones ?? 0;
+    // CRITICAL FIX: Use currentUser consistently
+    const userDisplayName = currentUser?.displayName || currentUser?.email?.split('@')[0] || 'Member';
+    const userPhotoURL = currentUser?.photoURL;
+    const parasStones = currentUser?.parasStones ?? 0;
     const rupeeValue = (parasStones / 100).toFixed(2);
 
 
@@ -82,12 +95,12 @@ const Navbar: React.FC = () => {
             <nav
                 className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
                     isScrolled
-                        ? 'bg-slate-900/95 backdrop-blur-md shadow-2xl border-b border-cyan-500/30' // Sharper shadow and border
+                        ? 'bg-slate-900/95 backdrop-blur-md shadow-2xl border-b border-cyan-500/30'
                         : 'bg-transparent'
                 }`}
             >
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex items-center justify-between h-20"> {/* Increased height for visual weight */}
+                    <div className="flex items-center justify-between h-20">
                         {/* Logo */}
                         <Link to="/" className="flex items-center gap-2 group">
                             <div className="relative p-0.5 bg-cyan-600/10 rounded-full border border-cyan-500/30">
@@ -123,8 +136,8 @@ const Navbar: React.FC = () => {
 
                         {/* Right Section */}
                         <div className="hidden md:flex items-center gap-3">
-                            {/* Paras Stones Display (Better visual) */}
-                            {user && userData && (
+                            {/* Paras Stones Display */}
+                            {isAuthenticated && currentUser && (
                                 <motion.div
                                     initial={{ opacity: 0, x: 20 }}
                                     animate={{ opacity: 1, x: 0 }}
@@ -136,7 +149,7 @@ const Navbar: React.FC = () => {
                                 </motion.div>
                             )}
                              {/* Notifications Button */}
-                            {user && (
+                            {isAuthenticated && (
                                 <button
                                     onClick={() => handleNavigation('/notifications')}
                                     className="p-2 text-slate-300 hover:text-white hover:bg-slate-800/70 rounded-full transition-all"
@@ -145,7 +158,7 @@ const Navbar: React.FC = () => {
                                 </button>
                             )}
 
-                            {user ? (
+                            {isAuthenticated ? (
                                 /* Authenticated Profile Dropdown */
                                 <div className="relative z-50" ref={dropdownRef}>
                                     <button
@@ -156,7 +169,6 @@ const Navbar: React.FC = () => {
                                                 : 'bg-slate-800/50 border-transparent hover:border-slate-700 text-slate-300 hover:text-white'
                                         }`}
                                     >
-                                        {/* 🎯 FIX: Use photoURL for profile image */}
                                         <div className="w-7 h-7 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center">
                                             {userPhotoURL ? (
                                                 <img src={userPhotoURL} alt={userDisplayName} className="w-full h-full object-cover" />
@@ -164,7 +176,6 @@ const Navbar: React.FC = () => {
                                                 <UserCircle className="w-5 h-5 text-cyan-400" />
                                             )}
                                         </div>
-                                        {/* 🎯 FIX: Display Name */}
                                         <span className='hidden lg:inline'>{userDisplayName.split(' ')[0]}</span> 
                                         <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${isProfileDropdownOpen ? 'rotate-180 text-cyan-400' : ''}`} />
                                     </button>
@@ -182,9 +193,9 @@ const Navbar: React.FC = () => {
                                                 {/* User Info & Stones Summary */}
                                                 <div className="px-4 py-3 border-b border-slate-800 bg-slate-800/50">
                                                     <p className="text-sm font-semibold text-white truncate">{userDisplayName}</p>
-                                                    <p className="text-xs text-cyan-400 mt-0.5">{user.email}</p>
+                                                    <p className="text-xs text-cyan-400 mt-0.5">{currentUser?.email}</p>
                                                 </div>
-                                                {userData && (
+                                                {currentUser && (
                                                     <div className="px-4 py-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border-b border-slate-800">
                                                         <div className="flex items-center justify-between">
                                                             <div className="flex items-center gap-2"> <Gem className="w-4 h-4 text-amber-400" /> <span className="text-xs text-amber-300 font-semibold">Paras Stones</span> </div>
@@ -213,13 +224,13 @@ const Navbar: React.FC = () => {
                                         to="/login"
                                         className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-full transition-all duration-200 flex items-center gap-2"
                                     >
-                                        <LogIn className='w-4 h-4' /> Sign In
+                                        <LogIn className='w-4 h-4' /> **Sign In**
                                     </Link>
                                     <Link
                                         to="/signup"
                                         className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full hover:from-blue-600 hover:to-cyan-600 transition-all duration-200 shadow-md shadow-blue-500/30"
                                     >
-                                        Get Started
+                                        **Sign Up**
                                     </Link>
                                 </div>
                             )}
@@ -248,7 +259,7 @@ const Navbar: React.FC = () => {
                             <div className="px-4 py-4 space-y-1">
                                 
                                 {/* User Info Header Mobile */}
-                                {user && (
+                                {isAuthenticated && currentUser && (
                                     <div className="flex items-center gap-3 px-4 py-3 bg-slate-800/70 rounded-lg mb-3 border border-slate-700">
                                         <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-700 flex items-center justify-center">
                                             {userPhotoURL ? (
@@ -259,7 +270,7 @@ const Navbar: React.FC = () => {
                                         </div>
                                         <div>
                                             <p className="text-sm font-semibold text-white">{userDisplayName}</p>
-                                            <p className="text-xs text-cyan-400">{user.email}</p>
+                                            <p className="text-xs text-cyan-400">{currentUser.email}</p>
                                         </div>
                                     </div>
                                 )}
@@ -278,7 +289,7 @@ const Navbar: React.FC = () => {
                                     </Link>
                                 ))}
 
-                                {user ? (
+                                {isAuthenticated ? (
                                     /* Mobile Authenticated Menu */
                                     <div className="pt-3 mt-3 border-t border-slate-800 space-y-1">
                                         <div
@@ -310,14 +321,14 @@ const Navbar: React.FC = () => {
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-all"
                                         >
-                                            <LogIn className="w-5 h-5" /> <span>Sign In</span>
+                                            <LogIn className="w-5 h-5" /> <span>**Sign In**</span>
                                         </Link>
                                         <Link
                                             to="/signup"
                                             onClick={() => setIsMobileMenuOpen(false)}
                                             className="w-full px-4 py-3 text-sm font-medium text-center text-white bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg hover:from-blue-600 hover:to-cyan-600 transition-all shadow-lg shadow-blue-500/25"
                                         >
-                                            Sign Up
+                                            **Sign Up**
                                         </Link>
                                     </div>
                                 )}
