@@ -1,5 +1,5 @@
 services:
-  - type: **static_site** # <--- CRITICAL CHANGE HERE
+  - type: static_site # <--- CRITICAL CHANGE HERE
     name: sangyan-frontend
     env: static
     branch: main
