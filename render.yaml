@@ -1,0 +1,49 @@
+# Render manifest for Sangyan
+#
+# This file configures two services:
+# 1) sangyan-frontend - a static site serving the React app build output
+# 2) sangyan-backend  - a Python/Django web service that serves the API and static files
+#
+# It also declares a managed Postgres database. Replace secrets in the
+# Render dashboard rather than committing them here.
+
+services:
+  - type: static
+    name: sangyan-frontend
+    env: static
+    branch: main
+    plan: free
+    buildCommand: "cd frontend && if [ -f package-lock.json ]; then npm ci; else npm install; fi && npm run build"
+    publishPath: "frontend/build"
+    autoDeploy: true
+
+  - type: web
+    name: sangyan-backend
+    env: python
+    branch: main
+    plan: starter
+    buildCommand: "./build.sh"
+    startCommand: "./start.sh"
+    autoDeploy: true
+    # Provide non-secret defaults here if you like; prefer setting secrets in the Render UI.
+    envVars:
+      - key: DEBUG
+        value: "False"
+      - key: ALLOWED_HOSTS
+        value: "your-service.onrender.com"
+      # DATABASE_URL will be injected from the managed database below using `fromDatabase` in the UI,
+      # but you can also set it here as a secret placeholder if needed.
+
+databases:
+  - name: sangyan-db
+    engine: postgres
+    plan: starter
+    # Optionally specify region: e.g. oregon, frankfurt, sydney
+    # region: oregon
+
+# Notes:
+# - After creating the service in Render, set SECRET_KEY and other secrets in the Render dashboard
+#   as environment variables (do not commit them to source control).
+# - If you want a single service approach (Django serving the built frontend), you can skip the
+#   `sangyan-frontend` static service and instead use the `sangyan-backend` service only (current
+#   build scripts already copy the frontend build into Django's STATIC_ROOT).
