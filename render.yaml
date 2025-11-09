@@ -5,7 +5,7 @@ services:
     branch: main
     plan: free
     buildCommand: "cd frontend && if [ -f package-lock.json ]; then npm ci; else npm install; fi && npm run build"
-    publishPath: "frontend/build"
+    # publishPath: "frontend/build"
     autoDeploy: true
 
   - type: web
@@ -27,7 +27,7 @@ services:
 
 databases:
   - name: sangyan-db
-    engine: postgres
+    # engine: postgres
     plan: starter
     # Optionally specify region: e.g. oregon, frankfurt, sydney
     # region: oregon
