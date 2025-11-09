@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     Lightbulb, Menu, X, Sparkles, LogOut, Settings,
-    ChevronDown, UserCircle, Bell, Gem, LogIn, ExternalLink, Sun, Moon
+    ChevronDown, UserCircle, Bell, Gem, LogIn, ExternalLink, Sun, Moon,
+    Paperclip
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
@@ -59,6 +60,7 @@ const Navbar: React.FC = () => {
         { name: 'Blogs', path: '/blogs' },
         { name: 'Events', path: '/events' },
         { name: 'About', path: '/about' },
+        {name:"Threads",path:'/threads'}
     ];
 
     // CRITICAL FIX: Use isAuthenticated flag
@@ -308,7 +310,9 @@ const Navbar: React.FC = () => {
                                         <button onClick={() => handleNavigation('/settings')} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-all">
                                             <Settings className="w-5 h-5" /> <span>Settings</span>
                                         </button>
-                                        
+                                        <button onClick={() => handleNavigation('/threads')} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800/50 rounded-lg transition-all">
+                                            <Paperclip className="w-5 h-5" /> <span>Settings</span>
+                                        </button>
                                         <button onClick={handleSignOut} className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded-lg transition-all">
                                             <LogOut className="w-5 h-5" /> <span>Sign Out</span>
                                         </button>

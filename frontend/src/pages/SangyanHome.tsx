@@ -7,6 +7,9 @@ import Footer from '../components/Footer';
 import BlogCard from '../components/BlogCard';
 import EventCard from '../components/EventCard';
 import Newsletter from '../components/Newsletter';
+// Import the background video from src/assets so Vite will bundle and
+// resolve its URL correctly in both dev and production builds.
+import bgVideo from '../assets/bg_video_4.mp4';
 import { SANGYAN_CONFIG } from '../config/sangyan.config';
 import { Blog, Event } from '../types';
 import { title } from 'process';
@@ -153,6 +156,11 @@ const SangyanHome: React.FC = () => {
   const { scrollYProgress } = useScroll();
   const heroRef = useRef<HTMLDivElement>(null);
 
+  // Use the imported video. Vite will replace this with the correct
+  // URL for dev and the built app. If anything goes wrong, fall back
+  // to the public/static paths.
+  const videoSrc = bgVideo || (import.meta.env.MODE === 'development' ? '/bg_video_4.mp4' : '/static/bg_video_4.mp4');
+
   // Parallax effects for hero section
   const yHero = useTransform(scrollYProgress, [0, 0.5], [0, 150]);
   const opacityHero = useTransform(scrollYProgress, [0, 0.4], [1, 0]);
@@ -241,7 +249,7 @@ const SangyanHome: React.FC = () => {
               playsInline
               autoPlay
             >
-              <source src="/bg_video_4.mp4" type="video/mp4" />
+              <source src={videoSrc} type="video/mp4" />
               Your browser does not support the video tag.
             </video>
             

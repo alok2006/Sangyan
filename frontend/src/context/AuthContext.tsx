@@ -2,30 +2,22 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import toast from 'react-hot-toast';
 import axios, { AxiosInstance, AxiosError } from 'axios';
 
-// --- Type Imports (CRITICAL FIX: Use central types file) ---
-// Assuming this is imported from the refactored 'src/types.ts'
-import { User, UserRole, MembershipStatus, ParasTransaction } from '../../types'; 
+// --- Type Imports (Ensure this path is correct in your project) ---
+import { User, UserRole, MembershipStatus, ParasTransaction } from '../types'; 
 
 // --- Configuration ---
-const API_SERVER_ROOT = 'http://localhost:8000'; 
-const API_ROUTER_BASE = `${API_SERVER_ROOT}/api/`; 
-const TOKEN_URL = `${API_SERVER_ROOT}/api/token/`; // Centralize token URL
+const API_ROUTER_BASE = `/api/`; 
+const TOKEN_URL = `/api/token/`; 
 
-// --- Context Interfaces (SIMPLIFIED) ---
+// --- Context Interfaces ---
 
-/**
- * Interface defining the methods and state of the Auth Context.
- * Now uses the central 'User' interface.
- */
 interface AuthContextType {
-    // We use the full User type here, even though some fields might be null on initial load
-    currentUser: User | null; // Renamed from userData for clarity
+    currentUser: User | null;
     isAuthenticated: boolean;
     loading: boolean;
     login: (email: string, password: string) => Promise<boolean>;
     signOut: (callApi?: boolean) => Promise<void>;
-   updateProfile: (
-        // CRITICAL: Aligned with Django field names
+    updateProfile: (
         first_name: string, 
         last_name: string, 
         photoURL?: string, 
@@ -33,7 +25,7 @@ interface AuthContextType {
         course?: string, 
         bio?: string
     ) => Promise<void>;
-    refreshUserData: () => Promise<void>;
+    refreshUserData: () => Promise<boolean>; // Returns boolean on success/fail
     addParasStones: (amount: number, reason: string) => Promise<void>;
     spendParasStones: (amount: number, reason: string) => Promise<boolean>;
     getAuthToken: () => string | null;
@@ -41,7 +33,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Helper function to decode JWT payload (Unchanged, but useful)
+// Helper function to decode JWT payload
 const decodeTokenUID = (token: string): string | null => {
     try {
         const base64Url = token.split('.')[1];
@@ -51,7 +43,6 @@ const decodeTokenUID = (token: string): string | null => {
         }).join(''));
 
         const payload = JSON.parse(jsonPayload);
-        // JWTs typically store the user ID as 'user_id' or 'uid' (our custom token uses 'uid')
         return payload.uid || payload.user_id || null; 
     } catch (e) {
         return null;
@@ -71,7 +62,7 @@ interface AuthProviderProps {
     children: ReactNode;
 }
 
-// Create a configured Axios instance with the API ROUTER base
+// Create a configured Axios instance
 const axiosInstance: AxiosInstance = axios.create({
     baseURL: API_ROUTER_BASE, 
     headers: {
@@ -81,7 +72,6 @@ const axiosInstance: AxiosInstance = axios.create({
 
 // --- Auth Provider Component ---
 export const AuthProvider = ({ children }: AuthProviderProps) => {
-    // CRITICAL FIX: Use the central User interface and simplify state
     const [currentUser, setCurrentUser] = useState<User | null>(null); 
     const [loading, setLoading] = useState(true);
 
@@ -91,62 +81,57 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     
     // 1. SIGN OUT: Clears all credentials
     const signOut = useCallback(async (callApi = true) => {
-        // TODO: Implement API call to token blacklist if needed
         try {
             if (callApi) { 
-                // e.g., await axiosInstance.post('/token/blacklist/', { refresh: refreshToken });
+                // Placeholder for API call (e.g., await axiosInstance.post('/token/blacklist/', { refresh: refreshToken });)
             } 
+        } catch (error) { 
+            console.error('Sign out API call error:', error);
+        } finally {
             localStorage.removeItem('authToken');
             localStorage.removeItem('authUID'); 
             delete axiosInstance.defaults.headers.common['Authorization']; 
             setCurrentUser(null);
             toast.success('Signed out successfully');
-        } catch (error) { 
-            // Even if the API call fails, we still clear local storage
-            console.error('Sign out error:', error);
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('authUID'); 
-            delete axiosInstance.defaults.headers.common['Authorization']; 
-            setCurrentUser(null);
         }
     }, []);
 
 
     // 2. FETCH USER DATA: Uses stored UID
-    const fetchUserData = useCallback(async () => {
+    const fetchUserData = useCallback(async (): Promise<boolean> => {
         const uid = getUID();
         const token = getAuthToken();
 
         if (!uid || !token) {
             signOut(false);
-            return null;
+            return false;
         }
         
         const URL = `users/${uid}/`; 
 
         try {
+            // Ensure Authorization header is set for this direct call
+            axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
             const response = await axiosInstance.get(URL);
             
-            // CRITICAL FIX: Directly cast the response data to the User type
             const data: User = response.data;
-            
-            // NOTE: We rely on the Serializer to return the correct structure.
             setCurrentUser(data);
-            return data; 
+            return true; 
         } catch (error) {
             const axiosErr = error as AxiosError;
-            if (axiosErr.response?.status !== 401) { 
-                console.error(`Error fetching user data:`, axiosErr.message); 
+            console.error(`Error fetching user data:`, axiosErr.message, axiosErr.response?.status);
+            
+            // If fetching fails due to auth issues, sign out
+            if (axiosErr.response?.status === 401 || axiosErr.response?.status === 403) {
+                 signOut(false);
             }
-            // If fetching fails (e.g., 404, 403, or invalid token), sign out
-            signOut(false);
-            return null; 
+            return false; 
         }
     }, [signOut, getUID, getAuthToken]);
 
-    const refreshUserData = useCallback(async () => {
-        const data = await fetchUserData();
-        return !!data; 
+    const refreshUserData = useCallback(async (): Promise<boolean> => {
+        return fetchUserData(); 
     }, [fetchUserData]);
     
     
@@ -155,12 +140,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         try {
             const response = await axios.post(TOKEN_URL, { email, password });
             
-            // CustomTokenObtainPairSerializer adds 'uid' and 'email' to the response body
             const { access, uid: responseUid } = response.data; 
 
             let uid = responseUid;
             if (access && !uid) {
-                // Fallback: Decode UID from the access token payload
                 uid = decodeTokenUID(access); 
             }
             
@@ -168,7 +151,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 localStorage.setItem('authToken', access);
                 localStorage.setItem('authUID', uid); 
                 
-                // Immediately set Authorization header for subsequent fetchUserData call
+                // Immediately set Authorization header
                 axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${access}`;
 
                 const success = await fetchUserData();
@@ -178,7 +161,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                     toast.error("Login successful, but failed to retrieve user data.");
                     return false;
                 }
-
+                
+                // Use the newly fetched user data for the welcome message
                 toast.success(`Welcome, ${currentUser?.displayName || email}!`);
                 return true;
             }
@@ -191,9 +175,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
                 errorMessage = 'Invalid email or password.';
             }
             toast.error(errorMessage);
-            return false; // Return false on any login failure
+            return false; 
         }
-    }, [fetchUserData, signOut, currentUser]); // Added currentUser to dependency array
+    }, [fetchUserData, signOut, currentUser]); // Kept currentUser for welcome message dependency if fetch fails
 
 
     // 4. UPDATE PROFILE IMPLEMENTATION
@@ -222,28 +206,26 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         };
 
         try {
-            // Use PATCH for partial updates, PUT implies replacing the whole resource
             await axiosInstance.patch(`/users/${uid}/`, updateData);
-            await refreshUserData(); // Fetch fresh data after successful patch
+            await refreshUserData(); 
             toast.success('Profile updated successfully');
         } catch (error) { 
             const axiosErr = error as AxiosError;
             console.error('Profile Update Error:', axiosErr);
             toast.error('Failed to update profile.');
-            throw error; // Propagate error for component-level handling
+            throw error; 
         }
     }, [refreshUserData, getUID]);
 
 
-    // --- Interceptors Setup (Unchanged but relies on fixed logic) ---
+    // --- Interceptors Setup (Kept for token refresh/expiry handling) ---
     useEffect(() => {
         const requestInterceptor = axiosInstance.interceptors.request.use(
             (config) => {
                 const token = getAuthToken();
+                // Only set header if token exists and header isn't already set
                 if (token && !config.headers.Authorization) {
                     config.headers.Authorization = `Bearer ${token}`;
-                    // Set default for use outside of interceptor flow (e.g., fetchUserData)
-                    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`; 
                 }
                 return config;
             },
@@ -253,7 +235,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         const responseInterceptor = axiosInstance.interceptors.response.use(
             (response) => response,
             (error: AxiosError) => {
-                if (error.response?.status === 401 && !error.config?.url?.includes('/api/token/')) {
+                // If 401 and not trying to get a token, sign out
+                if (error.response?.status === 401 && !error.config?.url?.includes(TOKEN_URL)) {
                     toast.error('Session expired. Please log in again.');
                     setTimeout(() => signOut(false), 0); 
                 }
@@ -268,12 +251,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [getAuthToken, signOut]);
 
 
-    // --- Initialization Effect (Unchanged logic) ---
+    // --- Initialization Effect ---
     useEffect(() => {
         const initializeAuth = async () => {
-            if (getAuthToken()) {
-                // Ensure the Authorization header is set before fetchUserData runs
-                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${getAuthToken()}`;
+            // Set header default if token exists (for initial fetchUserData and subsequent API calls)
+            const token = getAuthToken();
+            if (token) {
+                axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
                 await fetchUserData();
             }
             setLoading(false);
@@ -283,10 +267,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     }, [fetchUserData, getAuthToken]);
 
 
-    // --- Monetary Functions (Logic depends on fixed 'user' state) ---
-    // The logic remains the same, but now it uses 'currentUser'
+    // --- Monetary Functions (Cleaned dependencies) ---
+    
     const addParasStones = useCallback(async (amount: number, reason: string) => {
-        if (!currentUser) throw new Error('No user logged in');
+        if (!getAuthToken()) throw new Error('No user logged in'); // Rely on token existence
         
         try {
             await axiosInstance.post('/users/paras/add/', { amount, reason });
@@ -298,10 +282,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             console.error('Error adding Paras Stones:', axiosErr);
             toast.error(errorData?.detail || errorData?.message || 'Failed to add Paras Stones');
         }
-    }, [currentUser, refreshUserData]);
+    }, [refreshUserData, getAuthToken]); // Removed currentUser from dependencies
 
     const spendParasStones = useCallback(async (amount: number, reason: string): Promise<boolean> => {
-        if (!currentUser) {
+        if (!getAuthToken()) {
             toast.error('No user logged in.');
             return false;
         }
@@ -324,7 +308,8 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
             toast.error(errorData?.detail || errorData?.message || 'Failed to spend Paras Stones');
             return false;
         }
-    }, [currentUser, refreshUserData]);
+    }, [refreshUserData, getAuthToken]); // Removed currentUser from dependencies
+
 
     const value: AuthContextType = {
         currentUser, 
@@ -333,7 +318,6 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         login, 
         signOut, 
         updateProfile, 
-        //@ts-ignore
         refreshUserData, 
         addParasStones, 
         spendParasStones, 

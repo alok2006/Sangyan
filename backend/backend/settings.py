@@ -11,10 +11,21 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+STATICFILES_DIRS = [
+    os.path.join(BASE_DIR, '../frontend/build/static'), # Adjust path if needed
+    os.path.join(BASE_DIR, '../frontend/build'),        # Adjust path if needed
+    # Allow serving files directly from the frontend `public` folder (dev mode)
+    os.path.join(BASE_DIR, '../frontend/public'),
+    # Some projects place a `public` folder under `src` — include it if present
+    os.path.join(BASE_DIR, '../frontend/src/public'),
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles') # For deployment
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -46,6 +57,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -60,7 +72,8 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        # Include the React build directory so TemplateView can serve index.html
+        'DIRS': [os.path.join(BASE_DIR, '../frontend/build')],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -120,7 +133,11 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
-STATIC_URL = 'static/'
+# Use a leading slash for STATIC_URL so generated static paths are absolute.
+STATIC_URL = '/static/'
+
+# Use WhiteNoise storage for efficient static file serving in production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

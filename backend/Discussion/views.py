@@ -2,16 +2,18 @@
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets, mixins, permissions
-from rest_framework import filters as drf_filters # <-- Import DRF filters with alias!
+from rest_framework import filters as drf_filters 
+from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
 # Import the BlogFilter class and other necessary modules
 from .filters import BlogFilter # <-- Import the filter from filters.py (if external)
-from .models import User, ParasTransaction, Blog, Event, Resource 
+from .models import User, ParasTransaction, Blog, Event, Resource ,Thread
 from .serializer import (
     UserSerializer, ParasTransactionSerializer, 
-    BlogSerializer, EventSerializer, ResourceSerializer
+    BlogSerializer, EventSerializer, ResourceSerializer,
+    ThreadSerializer
 )
 
 # --- Permissions (Optional but Recommended) ---
@@ -134,3 +136,62 @@ class ResourceViewSet(viewsets.ModelViewSet):
     serializer_class = ResourceSerializer
     # FIX APPLIED: Referenced directly by name
     permission_classes = [IsAdminOrReadOnly]
+
+from rest_framework.pagination import PageNumberPagination
+class ThreadPagination(PageNumberPagination):
+    page_size = 10  # Default number of threads per page
+    page_size_query_param = 'page_size'  # Allow client to override, e.g. ?page_size=5
+    max_page_size = 50  # Prevent abuse
+
+
+# --- THREAD VIEWSET (FINAL) ---
+
+from rest_framework import viewsets, permissions
+from rest_framework.filters import SearchFilter, OrderingFilter
+from .models import Thread
+from .serializer import ThreadSerializer, ThreadDetailSerializer
+from .pagination import ThreadPagination
+
+
+class ThreadViewSet(viewsets.ModelViewSet):
+    """
+    API endpoint for discussion threads and replies.
+    - Shows root threads by default.
+    - Supports ?parent_thread=<id> for replies.
+    - Includes nested replies on detail view.
+    """
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    pagination_class = ThreadPagination
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["title", "content", "user__first_name", "user__last_name"]
+    ordering_fields = ["created_at", "id"]
+
+    # --- Automatically switch serializer ---
+    def get_serializer_class(self):
+        # Return detailed serializer when retrieving a single thread
+        if self.action == "retrieve":
+            return ThreadDetailSerializer
+        return ThreadSerializer
+
+    # --- Main queryset logic ---
+    def get_queryset(self):
+        queryset = Thread.objects.all().order_by("-created_at")
+
+        parent_thread_param = self.request.query_params.get("parent_thread")
+
+        # ✅ Default: show only root threads (parent_thread IS NULL)
+        if parent_thread_param is None or parent_thread_param == "null":
+            queryset = queryset.filter(parent_thread__isnull=True)
+        elif parent_thread_param.isdigit():
+            queryset = queryset.filter(parent_thread=int(parent_thread_param))
+
+        # ✅ Optional: category / subject filter
+        category = self.request.query_params.get("category")
+        if category and category.lower() != "all":
+            queryset = queryset.filter(subject__iexact=category)
+
+        return queryset
+
+    # --- Create: auto-set user ---
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

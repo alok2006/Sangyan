@@ -4,9 +4,9 @@ import toast from 'react-hot-toast';
 import axios, { AxiosError } from 'axios';
 import { FcGoogle } from 'react-icons/fc';
 import { 
-     HiLockClosed, HiEye, HiUser, HiSparkles} from 'react-icons/hi2'; // Using Hi2 for new icons
+     HiLockClosed, HiEye, HiUser, HiSparkles} from 'react-icons/hi2'; 
 import { Lightbulb, Building2, BookOpen, MailIcon, EyeOff } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext'; // CRITICAL: Import useAuth
 import React from 'react';
 import { HiEyeOff } from 'react-icons/hi';
 
@@ -19,8 +19,8 @@ const Signup = () => {
         email: '',
         password: '',
         confirmPassword: '',
-        institute: '', // New required field
-        course: '',    // New required field
+        institute: '',
+        course: '',
     });
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
@@ -28,7 +28,8 @@ const Signup = () => {
 
     // --- Context & Router Hooks ---
     const navigate = useNavigate();
-    const { refreshUserData } = useAuth();
+    // CRITICAL FIX: Destructure the 'login' function from useAuth
+    const { login } = useAuth(); 
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFormData({
@@ -73,7 +74,7 @@ const Signup = () => {
             const lastName = nameParts.slice(1).join(' ') || '.'; 
             
             // --- STEP 1: Register User via Django REST Endpoint ---
-            const payload = {
+            const registrationPayload = {
                 email: formData.email,
                 username: formData.username,
                 first_name: firstName,
@@ -83,32 +84,21 @@ const Signup = () => {
                 // Custom fields
                 institute: formData.institute,
                 course: formData.course,
-                displayName: formData.name, // Mapping 'name' to the custom 'displayName' field
+                // Note: The backend UserSerializer handles displayName derivation
             };
             
-            // POST to UserViewSet registration endpoint (e.g., /api/v1/users/)
-            await axios.post(`/api/users/`, payload);
+            await axios.post(`/api/users/`, registrationPayload);
 
-            // --- STEP 2: Log the User In Immediately (Get the token) ---
-            // Assuming your Django simplejwt setup uses the standard /token/ endpoint
-            const loginResponse = await axios.post(`/api/token/`, {
-                email: formData.email, 
-                password: formData.password,
-            }).catch((error) => {
-                throw error; 
-            });
+            // --- STEP 2 (CRITICAL FIX): Log the User In Immediately using AuthContext ---
+            // This replaces the manual axios.post to /api/token/ and localStorage.setItem()
+            const loginSuccess = await login(formData.email, formData.password);
             
-            const { access } = loginResponse.data; 
-            console.log(access);
-            if (access) {
-                // --- STEP 3: Store Token and Update Context ---
-                localStorage.setItem('authToken', access);
-                await refreshUserData(); 
-
-                toast.success('Account created successfully! 🎉 Welcome to Sangyan!');
+            if (loginSuccess) {
+                // Login function already handles token storage, user data fetch, and toast success.
                 navigate('/');
             } else {
-                throw new Error("Registration successful, but failed to retrieve login token.");
+                // This means registration succeeded, but the subsequent login call failed (e.g., server issue, password hash delay)
+                throw new Error("Registration succeeded, but automatic login failed. Please try signing in.");
             }
         } catch (error) {
             console.error('Signup error:', error);
@@ -133,13 +123,8 @@ const Signup = () => {
                 
                 toast.error(errorMessage);
             } else {
-                // Network or unexpected error
-                if (axiosError.request && !axiosError.response) {
-                    toast.error('Network error: failed to reach the server. Check your connection.');
-                } else {
-                    //@ts-ignore
-                    toast.error(axiosError.response?.data?.detail || 'Failed to create account. Please check network or try again.');
-                }
+                // Handles network error or the new login failure throw
+                toast.error(error.message || 'Failed to create account. Please check network or try again.');
             }
         } finally {
             setLoading(false);
@@ -165,7 +150,7 @@ const Signup = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-cyan-900 flex items-center justify-center px-4 py-12 relative overflow-hidden">
-            {/* Animated Background Elements (Unchanged) */}
+            {/* Animated Background Elements */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
                 <div className="absolute w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl -top-20 -left-20 animate-blob"></div>
                 <div className="absolute w-96 h-96 bg-blue-500/10 rounded-full blur-3xl -bottom-20 -right-20 animate-blob animation-delay-2000"></div>
@@ -174,7 +159,7 @@ const Signup = () => {
 
             {/* Main Container */}
             <div className="relative w-full max-w-md animate-slide-in-left">
-                {/* Logo Header (Unchanged) */}
+                {/* Logo Header */}
                 <div className="text-center mb-8 animate-fade-in-down">
                     <Link to="/" className="inline-flex items-center space-x-3 group pt-8">
                         <div className="relative">
@@ -195,7 +180,7 @@ const Signup = () => {
                 {/* Signup Card */}
                 <div className="bg-gray-800/50 backdrop-blur-xl rounded-2xl shadow-2xl border border-cyan-500/20 p-8 animate-fade-in-up animation-delay-200">
                     
-                    {/* Google Signup Button (Unchanged) */}
+                    {/* Google Signup Button */}
                     <button
                         onClick={handleGoogleSignup}
                         disabled={loading}
@@ -205,7 +190,7 @@ const Signup = () => {
                         <span>Continue with Google</span>
                     </button>
 
-                    {/* Divider (Unchanged) */}
+                    {/* Divider */}
                     <div className="relative my-6">
                         <div className="absolute inset-0 flex items-center">
                             <div className="w-full border-t border-gray-600"></div>
@@ -215,7 +200,7 @@ const Signup = () => {
                         </div>
                     </div>
 
-                    {/* Email/Password Form (Refactored to include Institute/Course) */}
+                    {/* Email/Password Form */}
                     <form onSubmit={handleEmailSignup} className="space-y-5">
                         
                         {/* Name Input */}
@@ -249,7 +234,7 @@ const Signup = () => {
                                     id="username"
                                     type="text"
                                     name="username"
-                                    value={(formData as any).username}
+                                    value={formData.username}
                                     onChange={handleChange}
                                     placeholder="choose a username"
                                     className="w-full pl-12 pr-4 py-3 bg-gray-700/50 border border-gray-600 text-white placeholder-gray-400 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"

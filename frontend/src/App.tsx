@@ -1,3 +1,5 @@
+// App.tsx (FINAL)
+
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { Outlet } from 'react-router-dom';
@@ -9,7 +11,9 @@ import './index.css';
 import Profile from './pages/Profile';
 import ParasWallet from './pages/ParasWallet';
 import React from 'react';
-import BlogPage from './pages/BlogPage';
+
+// CRITICAL CHANGE: Import ThreadView (the unified component) instead of ThreadsPage
+import ThreadPage from './pages/ThreadsPage'; 
 
 // Lazy load pages for better performance
 const SangyanHome = lazy(() => import('./pages/SangyanHome'));
@@ -46,12 +50,12 @@ function App() {
       <Router>
         <Suspense fallback={<PageLoader />}>
           <Routes>
-            {/* Public routes WITHOUT Layout (they have their own Navbar/Footer) */}
+            {/* Public routes WITHOUT Layout */}
             <Route path="/" element={<SangyanHome />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
 
-            {/* Public routes WITH Layout */}
+            {/* Public/Protected routes WITH Layout */}
             <Route element={<LayoutWrapper />}>
               <Route path="/about" element={<About />} />
               <Route path="/team" element={<Team />} />
@@ -61,7 +65,7 @@ function App() {
                 path="/blogs"
                 element={
                   <ProtectedRoute>
-                    <BlogPage />
+                    <BlogList />
                   </ProtectedRoute>
                 }
               />
@@ -105,6 +109,23 @@ function App() {
                   </ProtectedRoute>
                 }
               />
+              
+              {/* Forum Routes using the unified ThreadView component */}
+              <Route
+                path='/threads' // List View: /threads
+                element={
+                  <ProtectedRoute>
+                    <ThreadPage/>
+                  </ProtectedRoute>
+                }/>
+              <Route
+                path='/threads/:threadId' // Detail View: /threads/123
+                element={
+                  <ProtectedRoute>
+                    <ThreadPage/>
+                  </ProtectedRoute>
+                }/>
+                
               <Route
                 path="/paras-wallet"
                 element={

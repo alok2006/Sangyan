@@ -18,3 +18,4 @@ class ParasTransactionAdmin(admin.ModelAdmin):
 admin.site.register(m.Blog)
 admin.site.register(m.Event)
 admin.site.register(m.Resource)
+admin.site.register(m.Thread)
